@@ -1,0 +1,38 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: sidecar-injector-webhook-deployment
+  labels:
+    app: sidecar-injector
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: sidecar-injector
+    spec:
+      containers:
+        - name: sidecar-injector
+          image: morvencao/sidecar-injector:v1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8888
+          args:
+            - -sidecarCfgFile=/etc/webhook/config/sidecarconfig.yaml
+            - -tlsCertFile=/etc/webhook/certs/cert.pem
+            - -tlsKeyFile=/etc/webhook/certs/key.pem
+            - -logtostderr
+            - -v=4
+          volumeMounts:
+            - name: webhook-certs
+              mountPath: /etc/webhook/certs
+              readOnly: true
+            - name: webhook-config
+              mountPath: /etc/webhook/config
+      volumes:
+        - name: webhook-certs
+          secret:
+            secretName: sidecar-injector-webhook-certs
+        - name: webhook-config
+          configMap:
+            name: sidecar-injector-webhook-configmap
