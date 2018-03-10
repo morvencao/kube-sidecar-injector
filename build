@@ -1,0 +1,2 @@
+docker build -t morvencao/sidecar-injector:v1 .
+docker push morvencao/sidecar-injector:v1
