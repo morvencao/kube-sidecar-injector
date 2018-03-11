@@ -28,7 +28,10 @@ var ignoredNamespaces = []string {
 	metav1.NamespacePublic,
 }
 
-const admissionWebhookAnnotationMutateKey = "sidecar-injector-webhook.morven.me/inject"
+const (
+	admissionWebhookAnnotationInjectKey = "sidecar-injector-webhook.morven.me/inject"
+	admissionWebhookAnnotationStatusKey = "sidecar-injector-webhook.morven.me/status"
+)
 
 type WebhookServer struct {
 	sidecarConfig    *Config
@@ -44,8 +47,8 @@ type WhSvrParameters struct {
 }
 
 type Config struct {
-	containers    []corev1.Container
-	volumes       []corev1.Volume
+	Containers  []corev1.Container  `yaml:"containers"`
+	Volumes     []corev1.Volume     `yaml:"volumes"`
 }
 
 type patchOperation struct {
@@ -59,27 +62,24 @@ func loadConfig(configFile string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	glog.Infof("New configuration: sha256sum %x", sha256.Sum256(data))
+	
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
 	
-	glog.Infof("New configuration: sha256sum %x", sha256.Sum256(data))
-	//glog.Infof("Containers: |\n  %v", strings.Replace(string(yaml.Marshal(cfg.containers)), "\n", "\n  ", -1))
-	//glog.Infof("Volumes: |\n  %v", strings.Replace(string(yaml.Marshal(cfg.volumes)), "\n", "\n  ", -1))
-	
 	return &cfg, nil
 }
 
-// Check whether the target resoured need to be mutated
-func mutationRequired(ignoredList []string, pod *corev1.Pod) bool {
+// Check whether the target resoured need to be injected
+func injectionRequired(ignoredList []string, pod *corev1.Pod) bool {
 	metadata := pod.ObjectMeta
 
 	// skip special kubernete system namespaces
 	for _, namespace := range ignoredList {
 		if metadata.Namespace == namespace {
-			glog.Infof("Skip mutation for %v for it' in special namespace:%v", metadata.Name, metadata.Namespace)
+			glog.Infof("Skip injection for %v for it' in special namespace:%v", metadata.Name, metadata.Namespace)
 			return false
 		}
 	}
@@ -88,18 +88,23 @@ func mutationRequired(ignoredList []string, pod *corev1.Pod) bool {
 	if annotations == nil {
 		annotations = map[string]string{}
 	}
-	
-	// determine whether to perform mutation based on annotation for the target resource
-	var required bool
-	switch strings.ToLower(annotations[admissionWebhookAnnotationMutateKey]) {
-	default:
-		required = false
-	case "y", "yes", "true", "on":
-		required = true
-	}
 
-	glog.Infof("Mutation policy for %v/%v: required:%v", metadata.Namespace, metadata.Name, required)
+	status := annotations[admissionWebhookAnnotationStatusKey]
 	
+	// determine whether to perform injection based on annotation for the target resource
+	var required bool
+	if strings.ToLower(status) == "injected" {
+		required = false;
+	} else {
+		switch strings.ToLower(annotations[admissionWebhookAnnotationInjectKey]) {
+		default:
+			required = false
+		case "y", "yes", "true", "on":
+			required = true
+		}
+	}
+	
+	glog.Infof("Injection policy for %v/%v: status: %q required:%v", metadata.Namespace, metadata.Name, status, required)
 	return required
 }
 
@@ -145,18 +150,45 @@ func addVolume(target, added []corev1.Volume, basePath string) (patch []patchOpe
 	return patch
 }
 
-// create mutation patch for resoures
-func createPatch(pod *corev1.Pod, sidecarConfig *Config) ([]byte, error) {
+func updateAnnotation(target map[string]string, added map[string]string) (patch []patchOperation) {
+	for key, value := range added {
+		if target == nil {
+			target = map[string]string{}
+			patch = append(patch, patchOperation {
+				Op:   "add",
+				Path: "/metadata/annotations",
+				Value: map[string]string{
+					key: value,
+				},
+			})
+		} else {
+			op := "add"
+			if target[key] != "" {
+				op = "replace"
+			}
+			patch = append(patch, patchOperation {
+				Op:    op,
+				Path:  "/metadata/annotations/" + key,
+				Value: value,
+			})
+		}
+	}
+	return patch
+}
+
+// create injection patch for resoures
+func createPatch(pod *corev1.Pod, sidecarConfig *Config, annotations map[string]string) ([]byte, error) {
 	var patch []patchOperation
 	
-	patch = append(patch, addContainer(pod.Spec.Containers, sidecarConfig.containers, "/spec/containers")...)
-	patch = append(patch, addVolume(pod.Spec.Volumes, sidecarConfig.volumes, "/spec/volumes")...)
-	
+	patch = append(patch, addContainer(pod.Spec.Containers, sidecarConfig.Containers, "/spec/containers")...)
+	patch = append(patch, addVolume(pod.Spec.Volumes, sidecarConfig.Volumes, "/spec/volumes")...)
+	patch = append(patch, updateAnnotation(pod.Annotations, annotations)...)
+
 	return json.Marshal(patch)
 }
 
 // sidecar injection process
-func (whsvr *WebhookServer) mutate(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
+func (whsvr *WebhookServer) admit(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	req := ar.Request
 	var pod corev1.Pod
 	if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
@@ -170,18 +202,17 @@ func (whsvr *WebhookServer) mutate(ar *v1beta1.AdmissionReview) *v1beta1.Admissi
 
 	glog.Infof("AdmissionReview for Kind=%v, Namespace=%v Name=%v (%v) UID=%v patchOperation=%v UserInfo=%v",
 		req.Kind, req.Namespace, req.Name, pod.Name, req.UID, req.Operation, req.UserInfo)
-	glog.Infof("Object: %v", string(req.Object.Raw))
-	glog.Infof("OldObject: %v", string(req.OldObject.Raw))
 	
-	// determine whether to perform mutation
-	if (mutationRequired(ignoredNamespaces, &pod)) {
-		glog.Infof("Skipping mutating %s/%s due to policy check", pod.Namespace, pod.Name)
+	// determine whether to perform injection
+	if !injectionRequired(ignoredNamespaces, &pod) {
+		glog.Infof("Skipping injection for %s/%s due to policy check", pod.Namespace, pod.Name)
 		return &v1beta1.AdmissionResponse {
 			Allowed: true, 
 		}
 	}
-	
-	patchBytes, err := createPatch(&pod, whsvr.sidecarConfig)
+
+	annotations := map[string]string{admissionWebhookAnnotationStatusKey: "injected"}
+	patchBytes, err := createPatch(&pod, whsvr.sidecarConfig, annotations)
 	if err != nil {
 		return &v1beta1.AdmissionResponse {
 			Result: &metav1.Status {
@@ -191,8 +222,7 @@ func (whsvr *WebhookServer) mutate(ar *v1beta1.AdmissionReview) *v1beta1.Admissi
 	}
 	
 	glog.Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
-	
-	reviewResponse := v1beta1.AdmissionResponse{
+	reviewResponse := &v1beta1.AdmissionResponse {
 		Allowed: true,
 		Patch:   patchBytes,
 		PatchType: func() *v1beta1.PatchType {
@@ -201,13 +231,11 @@ func (whsvr *WebhookServer) mutate(ar *v1beta1.AdmissionReview) *v1beta1.Admissi
 		}(),
 	}
 	
-	return &reviewResponse
+	return reviewResponse
 }
 
 // Serve method for webhook server
 func (whsvr *WebhookServer) serve(w http.ResponseWriter, r *http.Request) {
-	glog.Info("New request is comming...")
-
 	var body []byte
 	if r.Body != nil {
 		if data, err := ioutil.ReadAll(r.Body); err == nil {
@@ -228,33 +256,38 @@ func (whsvr *WebhookServer) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var reviewResponse *v1beta1.AdmissionResponse
+	var admissionResponse *v1beta1.AdmissionResponse
 	ar := v1beta1.AdmissionReview{}
 	if _, _, err := deserializer.Decode(body, nil, &ar); err != nil {
 		glog.Errorf("Can't decode body: %v", err)
-		reviewResponse = &v1beta1.AdmissionResponse {
+		admissionResponse = &v1beta1.AdmissionResponse {
 			Result: &metav1.Status {
 				Message: err.Error(),
 			},
 		}
 	} else {
-		// main mutation process
-		reviewResponse = whsvr.mutate(&ar)
+		// main injection process
+		admissionResponse = whsvr.admit(&ar)
 	}
-	
-	response := v1beta1.AdmissionReview{}
-	if reviewResponse != nil {
-		response.Response = reviewResponse
+
+	admissionReview := v1beta1.AdmissionReview{}
+	if admissionResponse != nil {
+		admissionReview.Response = admissionResponse
 		if ar.Request != nil {
-			response.Response.UID = ar.Request.UID
+			admissionReview.Response.UID = ar.Request.UID
 		}
 	}
 	
-	res, err := json.Marshal(response);
+	// reset the Object and OldObject, they are not needed in a response.
+	ar.Request.Object = runtime.RawExtension{}
+	ar.Request.OldObject = runtime.RawExtension{}
+	
+	res, err := json.Marshal(admissionReview);
 	if err != nil {
 		glog.Errorf("Can't encode response: %v", err)
 		http.Error(w, fmt.Sprintf("can't encode response: %v", err), http.StatusInternalServerError)
 	}
+	glog.Infof("Ready to write reponse ...")
 	if _, err := w.Write(res); err != nil {
 		glog.Errorf("Can't write response: %v", err)
 		http.Error(w, fmt.Sprintf("can't write response: %v", err), http.StatusInternalServerError)

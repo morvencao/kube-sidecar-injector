@@ -51,10 +51,7 @@ func main() {
 		if err := whsvr.server.ListenAndServeTLS("", ""); err != nil {
 			glog.Errorf("Filed to listen and serve webhook server: %v", err)
 		}
-		glog.Info("Webhook server is running...")
 	}()
-	
-	glog.Info("Started webhook server in go rountine...")
 	
 	// listening OS shutdown singal
 	signalChan := make(chan os.Signal, 1)

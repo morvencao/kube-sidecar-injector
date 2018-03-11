@@ -17,6 +17,7 @@ webhooks:
         apiGroups: [""]
         apiVersions: ["v1"]
         resources: ["pods"]
+    failurePolicy: Fail
     namespaceSelector:
       matchLabels:
         sidecar-injector: enabled
