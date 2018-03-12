@@ -15,8 +15,6 @@ spec:
         - name: sidecar-injector
           image: morvencao/sidecar-injector:v1
           imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8888
           args:
             - -sidecarCfgFile=/etc/webhook/config/sidecarconfig.yaml
             - -tlsCertFile=/etc/webhook/certs/cert.pem
