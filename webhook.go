@@ -156,7 +156,7 @@ func addVolume(target, added []corev1.Volume, basePath string) (patch []patchOpe
 
 func updateAnnotation(target map[string]string, added map[string]string) (patch []patchOperation) {
 	for key, value := range added {
-		if target == nil {
+		if target == nil || target[key] == "" {
 			target = map[string]string{}
 			patch = append(patch, patchOperation {
 				Op:   "add",
@@ -166,12 +166,8 @@ func updateAnnotation(target map[string]string, added map[string]string) (patch 
 				},
 			})
 		} else {
-			op := "add"
-			if target[key] != "" {
-				op = "replace"
-			}
 			patch = append(patch, patchOperation {
-				Op:    op,
+				Op:    "replace",
 				Path:  "/metadata/annotations/" + key,
 				Value: value,
 			})
