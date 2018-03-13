@@ -16,12 +16,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/kubernetes/pkg/apis/core/v1"
 )
 
 var (
 	runtimeScheme = runtime.NewScheme()
 	codecs        = serializer.NewCodecFactory(runtimeScheme)
 	deserializer  = codecs.UniversalDeserializer()
+
+	// (https://github.com/kubernetes/kubernetes/issues/57982)
+	defaulter = runtime.ObjectDefaulter(runtimeScheme)
 )
 
 var ignoredNamespaces = []string {
@@ -61,6 +65,19 @@ type patchOperation struct {
 func init() {
 	_ = corev1.AddToScheme(runtimeScheme)
 	_ = admissionregistrationv1beta1.AddToScheme(runtimeScheme)
+	// defaulting with webhooks:
+	// https://github.com/kubernetes/kubernetes/issues/57982
+	_ = v1.AddToScheme(runtimeScheme)
+}
+
+// (https://github.com/kubernetes/kubernetes/issues/57982)
+func applyDefaultsWorkaround(containers []corev1.Container, volumes []corev1.Volume) {
+	defaulter.Default(&corev1.Pod {
+		Spec: corev1.PodSpec {
+			Containers:     containers,
+			Volumes:        volumes,
+		},
+	})
 }
 
 func loadConfig(configFile string) (*Config, error) {
@@ -210,7 +227,9 @@ func (whsvr *WebhookServer) mutate(ar *v1beta1.AdmissionReview) *v1beta1.Admissi
 			Allowed: true, 
 		}
 	}
-
+	
+	// Workaround: https://github.com/kubernetes/kubernetes/issues/57982
+	applyDefaultsWorkaround(whsvr.sidecarConfig.Containers, whsvr.sidecarConfig.Volumes)
 	annotations := map[string]string{admissionWebhookAnnotationStatusKey: "injected"}
 	patchBytes, err := createPatch(&pod, whsvr.sidecarConfig, annotations)
 	if err != nil {
