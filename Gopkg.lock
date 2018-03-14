@@ -14,6 +14,15 @@
   revision = "de5bf2ad457846296e2031421a34e2568e304e35"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/docker/distribution"
+  packages = [
+    "digestset",
+    "reference"
+  ]
+  revision = "34c706e759240975178df82495f147559cc0edc1"
+
+[[projects]]
   name = "github.com/emicklei/go-restful"
   packages = [
     ".",
@@ -87,7 +96,7 @@
     "jlexer",
     "jwriter"
   ]
-  revision = "4a8a4c12c4d1b0c0a7de630426ce6dcb07141b17"
+  revision = "f594efddfa171111dc4349cd6e78e8f61dc7936f"
 
 [[projects]]
   name = "github.com/modern-go/concurrent"
@@ -100,6 +109,12 @@
   packages = ["."]
   revision = "1df9eeb2bb81f327b96228865c5687bc2194af3f"
   version = "1.0.0"
+
+[[projects]]
+  name = "github.com/opencontainers/go-digest"
+  packages = ["."]
+  revision = "279bed98673dd5bef374d3b6e4b09e2af76183bf"
+  version = "v1.0.0-rc1"
 
 [[projects]]
   name = "github.com/spf13/pflag"
@@ -116,7 +131,7 @@
     "idna",
     "lex/httplex"
   ]
-  revision = "d0aafc73d5cdc42264b0af071c261abac580695e"
+  revision = "892bf7b0c6e2f93b51166bf3882e50277fa5afc6"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -157,17 +172,26 @@
   name = "k8s.io/api"
   packages = [
     "admission/v1beta1",
+    "admissionregistration/v1beta1",
     "authentication/v1",
     "core/v1"
   ]
   revision = "acf347b865f29325eb61f4cd2df11e86e073a5ee"
 
 [[projects]]
+  branch = "master"
+  name = "k8s.io/apiextensions-apiserver"
+  packages = ["pkg/features"]
+  revision = "9f7d28e4a66fed426627a89e57d82602a3d33a12"
+
+[[projects]]
   branch = "release-1.9"
   name = "k8s.io/apimachinery"
   packages = [
     "pkg/api/resource",
+    "pkg/apis/meta/internalversion",
     "pkg/apis/meta/v1",
+    "pkg/apis/meta/v1alpha1",
     "pkg/conversion",
     "pkg/conversion/queryparams",
     "pkg/fields",
@@ -199,13 +223,37 @@
 
 [[projects]]
   branch = "master"
+  name = "k8s.io/apiserver"
+  packages = [
+    "pkg/features",
+    "pkg/util/feature"
+  ]
+  revision = "8e2fdf029740242e7ff156baa1107b07e403e241"
+
+[[projects]]
+  branch = "master"
   name = "k8s.io/kube-openapi"
   packages = ["pkg/common"]
   revision = "50ae88d24ede7b8bad68e23c805b5d3da5c8abaf"
 
+[[projects]]
+  name = "k8s.io/kubernetes"
+  packages = [
+    "pkg/apis/autoscaling",
+    "pkg/apis/core",
+    "pkg/apis/core/v1",
+    "pkg/apis/extensions",
+    "pkg/apis/networking",
+    "pkg/features",
+    "pkg/util/parsers",
+    "pkg/util/pointer"
+  ]
+  revision = "bee2d1505c4fe820744d26d41ecd3fdd4a3d6546"
+  version = "v1.9.4"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "b86a5a7a0fa8cd74f08e866e28c143d670bcad31be85372265ce2417490f004f"
+  inputs-digest = "5fd13a1e69dcceaf60db48662815ef885857cb5db27072d705b32ee60241a44b"
   solver-name = "gps-cdcl"
   solver-version = 1
