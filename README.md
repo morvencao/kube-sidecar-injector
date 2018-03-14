@@ -27,7 +27,7 @@ go get -u github.com/golang/dep/cmd/dep
 2. Build and push docker image
    
 ```
-build
+./build
 ```
 
 ## Deploy
@@ -49,6 +49,8 @@ cat deployment/mutatingwebhook.yaml | \
 
 3. Deploy resources
 ```
+kubectl create -f deployment/nginxconfigmap.yaml
+kubectl create -f deployment/configmap.yaml
 kubectl create -f deployment/deployment.yaml
 kubectl create -f deployment/service.yaml
 kubectl create -f deployment/mutatingwebhook-ca-bundle.yaml
