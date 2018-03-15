@@ -1,24 +1,25 @@
 # A dive into Kunernetes MutatingAdmissionWebhook
 
-[Admission controllers](https://kubernetes.io/docs/admin/admission-controllers/) are powerful tools for restricting resources prior to persistence by intercepting requests to `kube-apiserver`. 
-But they are not flexible enough for they need to be compiled to binary into `kube-apiserver`. From Kubernetes 1.7, [Initializers](https://v1-8.docs.kubernetes.io/docs/admin/extensible-admission-controllers/#initializers) and [External Admission Webhooks](https://v1-8.docs.kubernetes.io/docs/admin/extensible-admission-controllers/#external-admission-webhooks) are introduced to address this limitation. To Kubernetes 1.9, `Initializers` stays in alpha phase while `External Admission Webhooks` have been promoted to beta and split into [MutatingAdmissionWebhook](https://kubernetes.io/docs/admin/admission-controllers/#mutatingadmissionwebhook-beta-in-19) and [ValidatingAdmissionWebhook](https://kubernetes.io/docs/admin/admission-controllers/#validatingadmissionwebhook-alpha-in-18-beta-in-19).
-
-In this article, we'll dive into the details of `MutatingAdmissionWebhook` and write a working webhook admission server step by step.
-
+[Admission controllers](https://kubernetes.io/docs/admin/admission-controllers/) are powerful tools for restricting resources prior to persistence by intercepting requests to `kube-apiserver`. But they are not flexible enough for they need to be compiled to binary into `kube-apiserver`. From Kubernetes 1.7, [Initializers](https://v1-8.docs.kubernetes.io/docs/admin/extensible-admission-controllers/#initializers) and [External Admission Webhooks](https://v1-8.docs.kubernetes.io/docs/admin/extensible-admission-controllers/#external-admission-webhooks) are introduced to address this limitation. To Kubernetes 1.9, `Initializers` stays in alpha phase while `External Admission Webhooks` have been promoted to beta and split into [MutatingAdmissionWebhook](https://kubernetes.io/docs/admin/admission-controllers/#mutatingadmissionwebhook-beta-in-19) and [ValidatingAdmissionWebhook](https://kubernetes.io/docs/admin/admission-controllers/#validatingadmissionwebhook-alpha-in-18-beta-in-19).
 
 `MutatingAdmissionWebhook` together with `ValidatingAdmissionWebhook` are special kind of `admission controllers` which process the mutating and validating on request matching the rules defined in [MutatingWebhookConfiguration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.9/#mutatingwebhookconfiguration-v1beta1-admissionregistration)(explained below).
 
-## Why Webhooks first
+In this article, we'll dive into the details of `MutatingAdmissionWebhook` and write a working webhook admission server step by step.
 
-According to the feedback of alpha of both `GenericAdmissionWebhook` and `Initializers`, k8s community decides to push webhook to beta abd divide it into `MutatingAdmissionWebhook` and `ValidatingAdmissionWebhook`. `MutatingAdmissionWebhook` inherits and extends features of `GenericAdmissionWebhook` to support mutation based on voices from community.
+## `Webhooks` vs `Initializers`
 
-The following explanations for webhooks first are quoted form Mutating Webhooks Beta [design doc](https://docs.google.com/document/d/1c4kdkY3ha9rm0OIRbGleCeaHknZ-NR1nNtDp-i8eH8E/view#):
+Based on voices from community and use cases in alpha phase of both `External Admission Webhooks` and `Initializers`, k8s community decides to push webhooks to beta and split it into `MutatingAdmissionWebhook` and `ValidatingAdmissionWebhook`. And `MutatingAdmissionWebhook` inherits and extends features old to support mutation. These updates make webhooks consistent with other admission controllers and enforces `mutate-before-validate`. `Initializers` can also implement dynamic admission control by modifying Kubernetes resources before they are actually created.
 
-> 1. **Serves Most Use Cases:** We reviewed code of all current use cases, namely: Kubernetes Built-in Admission Controllers, OpenShift Admission Controllers, Istio & Service Catalog. All of those use cases are well served by mutating and non-mutating webhooks.
-> 2. **Less Work:** An engineer quite experienced with both code bases estimated that it is less work to adding Mutating Webhooks and bring both kinds of webhooks to beta; than to bring non-mutating webhooks and initializers to Beta. Some open issues with Initializers with long expected development time include quota replenishment bug, and controller awareness of uninitialized objects.
-> 3. **API Consistency:** Prefer completing one related pair of interfaces (both kinds of webhooks) at the same time.
+So what's the difference between `Webhooks` and `Initializers`?
 
-Webhooks' update makes it consistent with other admission controllers and enforces `mutate-before-validate`. Each of narrowly focused webhooks can be added to admission chain without recompiling them and have semantic knowledge of what they are inspecting.
+- `Webhooks` can be applied on more actions, including 'mutate' or 'admit' on resoures 'CREATE' 'UPDATE' and 'DELETE', whereas `Initializers` can't 'admit' resources 'DELETE' request.
+- `Webhooks` are not allowed to query resources before created, while `Initializers` are capable to watch the uninitialized reources by the query parameter `?includeUninitialized=true`, which make resources creating progress transparent.
+- Since the `Initializers` persist the 'pre-create' states to `ETCD`, higher latency and increased `ETCD` burden will be introduced accordingly, especially when `apiserver` upgrades or fails.
+- More robust on failures `Webhooks` than `Initializers`. Failure policy can be configured in `Webhooks` configuraton to avoid hanging in resources creating. Buggy `Initializers`, on the other hand, may block all matched resources creating.
+
+Promotion of `Webhooks` to beta maybe a signal that more support for it in the future, but that depends. If stable behavior is preferred, suggest you to choose `Webhooks`.
+
+
 
 ## How MutatingAdmissionWebhook works
 
