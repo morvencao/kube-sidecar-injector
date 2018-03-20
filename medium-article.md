@@ -1,29 +1,37 @@
-# A dive into Kunernetes MutatingAdmissionWebhook
+# Diving into Kubernetes MutatingAdmissionWebhook
 
-[Admission controllers](https://kubernetes.io/docs/admin/admission-controllers/) are powerful tools for restricting resources prior to persistence by intercepting requests to `kube-apiserver`. But they are not flexible enough for they need to be compiled to binary into `kube-apiserver`. From Kubernetes 1.7, [Initializers](https://v1-8.docs.kubernetes.io/docs/admin/extensible-admission-controllers/#initializers) and [External Admission Webhooks](https://v1-8.docs.kubernetes.io/docs/admin/extensible-admission-controllers/#external-admission-webhooks) are introduced to address this limitation. To Kubernetes 1.9, `Initializers` stays in alpha phase while `External Admission Webhooks` have been promoted to beta and split into [MutatingAdmissionWebhook](https://kubernetes.io/docs/admin/admission-controllers/#mutatingadmissionwebhook-beta-in-19) and [ValidatingAdmissionWebhook](https://kubernetes.io/docs/admin/admission-controllers/#validatingadmissionwebhook-alpha-in-18-beta-in-19).
+[Admission controllers](https://kubernetes.io/docs/admin/admission-controllers/) are powerful tools for intercepting requests to the Kubernetes API server prior to persistence of the object. However, they are not very flexible due to the requirement that they are compiled into binary into `kube-apiserver` and configured by the cluster administrator. Starting in Kubernetes 1.7, [Initializers](https://v1-8.docs.kubernetes.io/docs/admin/extensible-admission-controllers/#initializers) and [External Admission Webhooks](https://v1-8.docs.kubernetes.io/docs/admin/extensible-admission-controllers/#external-admission-webhooks) are introduced to address this limitation. In Kubernetes 1.9, `Initializers` stays in alpha phase while `External Admission Webhooks` have been promoted to beta and split into [MutatingAdmissionWebhook](https://kubernetes.io/docs/admin/admission-controllers/#mutatingadmissionwebhook-beta-in-19) and [ValidatingAdmissionWebhook](https://kubernetes.io/docs/admin/admission-controllers/#validatingadmissionwebhook-alpha-in-18-beta-in-19).
 
-`MutatingAdmissionWebhook` together with `ValidatingAdmissionWebhook` are special kind of `admission controllers` which process the mutating and validating on request matching the rules defined in [MutatingWebhookConfiguration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.9/#mutatingwebhookconfiguration-v1beta1-admissionregistration)(explained below).
+`MutatingAdmissionWebhook` together with `ValidatingAdmissionWebhook` are a special kind of `admission controllers` which process mutating and validating on requests matching the rules defined in [MutatingWebhookConfiguration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.9/#mutatingwebhookconfiguration-v1beta1-admissionregistration)(explained below).
 
 In this article, we'll dive into the details of `MutatingAdmissionWebhook` and write a working webhook admission server step by step.
 
+## Benefit of `Webhooks`
+
+`Webhooks` allow Kubernetes cluster-admin to create additional mutating and validating admission plugins to the admission chain of `apiserver` without recompiling them. This provides end-developer with the freedom and flexibility to customize admission logic on multiple actions("CREATA", "UPDATE", "DELETE"...) on any resource. The possible applications are vast. Some common use cases includes:
+- Mutating resources before creating them. [Istio](https://github.com/istio), a representative example, injecting [Envoy](https://github.com/envoyproxy/envoy) sidecar container to target pods to implement traffic management and policy enforcement.
+- Automated provisioning of `StorageClass`. Observes creation of `PersistentVolumeClaim` objects and automatically adds storage class to them based on predefined policy. Users that do not need to care about `StorageClass` creating.
+- Validating complex custom resource. Make sure custom resource can only be created after its definition and all dependencies created and available.
+- Restricting namespace. On multi-tenant systems, avoid resources created in reserved namespaces.
+
+Besides the user-cases listed above, many more aplications can be created based on the power of `webhooks`.
+
 ## `Webhooks` vs `Initializers`
 
-Based on voices from community and use cases in alpha phase of both `External Admission Webhooks` and `Initializers`, k8s community decides to push webhooks to beta and split it into `MutatingAdmissionWebhook` and `ValidatingAdmissionWebhook`. And `MutatingAdmissionWebhook` inherits and extends features old to support mutation. These updates make webhooks consistent with other admission controllers and enforces `mutate-before-validate`. `Initializers` can also implement dynamic admission control by modifying Kubernetes resources before they are actually created.
+Based on feedback from the community and use cases in alpha phase of both `External Admission Webhooks` and `Initializers`, the Kubernetes community decided to promote webhooks to beta and split it into `MutatingAdmissionWebhook` and `ValidatingAdmissionWebhook`. These updates make webhooks consistent with other admission controllers and enforce `mutate-before-validate`. `Initializers` can also implement dynamic admission control by modifying Kubernetes resources before they are actually created. If you're unfamiliar with `Initializers`, please refer to the acrtcle: https://medium.com/ibm-cloud/kubernetes-initializers-deep-dive-and-tutorial-3bc416e4e13e.
 
 So what's the difference between `Webhooks` and `Initializers`?
 
-- `Webhooks` can be applied on more actions, including 'mutate' or 'admit' on resoures 'CREATE' 'UPDATE' and 'DELETE', whereas `Initializers` can't 'admit' resources 'DELETE' request.
-- `Webhooks` are not allowed to query resources before created, while `Initializers` are capable to watch the uninitialized reources by the query parameter `?includeUninitialized=true`, which make resources creating progress transparent.
-- Since the `Initializers` persist the 'pre-create' states to `ETCD`, higher latency and increased `ETCD` burden will be introduced accordingly, especially when `apiserver` upgrades or fails.
-- More robust on failures `Webhooks` than `Initializers`. Failure policy can be configured in `Webhooks` configuraton to avoid hanging in resources creating. Buggy `Initializers`, on the other hand, may block all matched resources creating.
+- `Webhooks` can be applied on more actions, including 'mutate' or 'admit' on resoures 'CREATE' 'UPDATE' and 'DELETE', whereas `Initializers` can't 'admit' resources for 'DELETE' requests.
+- `Webhooks` are not allowed to query resources before created, while `Initializers` are capable of watching the uninitialized resources by the query parameter `?includeUninitialized=true`, which makes resources creating progress transparent.
+- Since the `Initializers` persist the 'pre-create' states to `etcd`, higher latency and increased `etcd` burden will be introduced accordingly, especially when `apiserver` upgrades or fails. `Webhooks`, however, consume less memory and computing resources.
+- More robustness on failures for `Webhooks` than `Initializers`. Failure policy can be configured in `Webhooks` configuraton to avoid hanging onto resources that are created. Buggy `Initializers`, on the other hand, may block all matched resources creating.
 
-Promotion of `Webhooks` to beta maybe a signal that more support for it in the future, but that depends. If stable behavior is preferred, suggest you to choose `Webhooks`.
-
-
+Besides the difference listed above, `Initializer` is stuck in some open issues with long expected development time including quota replenishment bug. Promotion of `Webhooks` to beta may be a signal that more support for it in the future, but that depends. If stable behavior is preferred, suggest you choose `Webhooks`.
 
 ## How MutatingAdmissionWebhook works
 
-`MutatingAdmissionWebhook` intercepts requests matching the rules in `MutatingWebhookConfiguration` before presisted into [ETCD](https://github.com/coreos/etcd). `MutatingAdmissionWebhook` executes the mutating by sending admission requests to webhook server. Webhook server is just plain http server that adhere to [API](https://github.com/kubernetes/kubernetes/blob/v1.9.0/pkg/apis/admission/types.go), so the possible applications are vast.
+`MutatingAdmissionWebhook` intercepts requests matching the rules defined in `MutatingWebhookConfiguration` before presisting into [etcd](https://github.com/coreos/etcd). `MutatingAdmissionWebhook` executes the mutation by sending admission requests to webhook server. Webhook server is just plain http server that adhere to the [API](https://github.com/kubernetes/kubernetes/blob/v1.9.0/pkg/apis/admission/types.go).
 
 The following diagram describes how `MutatingAdmissionWebhook` works in details:
 
@@ -31,31 +39,33 @@ The following diagram describes how `MutatingAdmissionWebhook` works in details:
 
 The `MutatingAdmissionWebhook` needs three objects to function:
 
-1. MutatingWebhookConfiguration
+1. **MutatingWebhookConfiguration**
+   
    `MutatingAdmissionWebhook` need to be registered in the `apiserver` by providing `MutatingWebhookConfiguration`. During the registration process, MutatingAdmissionWebhook states:
    - How to connect to the webhook admission server
    - How to verify the webhook admission server
    - The URL path of the webhook admission server
-   - Rules defines what resources and what action it handles
+   - Rules defining which resource and what action it handles
    - How unrecognized errors from the webhook admission server are handled
 
-2. MutatingAdmissionWebhook itself
-   `MutatingAdmissionWebhook` is plugin-style admission controller that can be configured into `apiserver`. The `MutatingAdmissionWebhook` plugin get lists of intersted admission webhook from `MutatingWebhookConfiguration`. Then the `MutatingAdmissionWebhook` observes the requests to apiserver and intercepts requests matching the rules in admission webhooks and call them in parallel.
+2. **MutatingAdmissionWebhook itself**
 
-3. Webhook Admission Server
-   `Webhook Admission Server` is just plain http server that adhere to k8s [API](https://github.com/kubernetes/kubernetes/blob/v1.9.0/pkg/apis/admission/types.go). 
-   For each request to `apiserver`, the `MutatingAdmissionWebhook` sends an `admissionReview` to the relevant webhook admission server. The webhook admission server gathers information like object, oldobject, and userInfo from `admissionReview`, and sends back a `admissionReview` response including a `AdmissionResponse` whose `Allowed` and `Result` fields are filled with the admission decision and optional `Patch` to mutate the resoures.
+   `MutatingAdmissionWebhook` is a plugin-style admission controller that can be configured into the `apiserver`. The `MutatingAdmissionWebhook` plugin get the list of interested admission webhooks from `MutatingWebhookConfiguration`. Then the `MutatingAdmissionWebhook` observes the requests to apiserver and intercepts requests matching the rules in admission webhooks and calls them in parallel.
+
+3. **Webhook Admission Server**
+   
+   `Webhook Admission Server` is just plain http server that adhere to Kubernetes [API](https://github.com/kubernetes/kubernetes/blob/v1.9.0/pkg/apis/admission/types.go). 
+   For each request to the `apiserver`, the `MutatingAdmissionWebhook` sends an `admissionReview`([API](https://github.com/kubernetes/kubernetes/blob/v1.9.0/pkg/apis/admission/types.go) for reference) to the relevant webhook admission server. The webhook admission server gathers information like `object`, `oldobject`, and `userInfo` from `admissionReview`, and sends back a `admissionReview` response including `AdmissionResponse` whose `Allowed` and `Result` fields are filled with the admission decision and optional `Patch` to mutate the resoures.
    
 ## Tutorial for MutatingAdmissionWebhook
 
-Write a complete Webhook Admission Server may be intimidating. To make it easier, we'll write a simple Webhook Admission Server that implements injecting nginx sidecar container and volume. The complete code can be find in [kube-mutating-webhook-tutorial](https://github.com/morvencao/kube-mutating-webhook-tutorial). The code is based on [Kunernetes webhook example](https://github.com/kubernetes/kubernetes/tree/release-1.9/test/images/webhook) and [Istio sidecar injection implemention](https://github.com/istio/istio/tree/master/pilot/pkg/kube/inject).
+Write a complete Webhook Admission Server may be intimidating. To make it easier, we'll write a simple Webhook Admission Server that implements injecting nginx sidecar container and volume. The complete code can be found in [kube-mutating-webhook-tutorial](https://github.com/morvencao/kube-mutating-webhook-tutorial). The project refers to [Kunernetes webhook example](https://github.com/kubernetes/kubernetes/tree/release-1.9/test/images/webhook) and [Istio sidecar injection implementation](https://github.com/istio/istio/tree/master/pilot/pkg/kube/inject).
 
-From now on, I'll show you how to write a working webhook admission server and deploy it in Kubernetes cluster.
-
+In the following sections, I'll show you how to write a working containerized webhook admission server and deploy it to a Kubernetes cluster.
 
 #### Prerequisites
 
-`MutatingAdmissionWebhook` requires a Kubernetes 1.9.0 or above with the admissionregistration.k8s.io/v1beta1 API enabled. Verify that by the following command:
+`MutatingAdmissionWebhook` requires a Kubernetes 1.9.0 or above with the `admissionregistration.k8s.io/v1beta1` API enabled. Verify that by the following command:
 ```
 kubectl api-versions | grep admissionregistration.k8s.io/v1beta1
 ```
@@ -67,7 +77,7 @@ In addition, the `MutatingAdmissionWebhook` and `ValidatingAdmissionWebhook` adm
 
 ### Write the Webhook Server
 
-`Webhook Admission Server` is just plain http server that adhere to k8s [API](https://github.com/kubernetes/kubernetes/blob/v1.9.0/pkg/apis/admission/types.go). 
+`Webhook Admission Server` is just plain http server that adhere to Kubernetes [API](https://github.com/kubernetes/kubernetes/blob/v1.9.0/pkg/apis/admission/types.go). 
 I'll paste some pseudo code to describe the main logic:
 ```
 sidecarConfig, err := loadConfig(parameters.sidecarCfgFile)
@@ -93,12 +103,13 @@ go func() {
     }
 }()
 ```
-Explaination for the above code:
+Explanation for the above code:
 
 - `sidecarCfgFile` contains sidecar injector template defined in `ConfigMap` below.
 - `certFile` and `keyFile` key pair that will be needed for TLS communication between `apiserver` and `webhook server`.
-- it will start a https server which listen on 443 on path '/mutate'. Next we'll focus on the handler function `serve`.
+- Line 19 starts https server listening on 443 on path '/mutate'. 
 
+Next we'll focus on the main logic of handler function `serve`:
 ```
 // Serve method for webhook server
 func (whsvr *WebhookServer) serve(w http.ResponseWriter, r *http.Request) {
@@ -137,11 +148,12 @@ func (whsvr *WebhookServer) serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 ```
-The `serve` function is just plain http handler. 
-- It firstly unmarshal the request to `AdmissionReview` including information like `object`, `oldobject` and `userInfo`.
-- Then it calls Webhook core function `mutate` to create `patch` that injects sidecar container and volume. 
-- Finally, unmarshal the response with admission decision and send it back to `apiserver`.
+The `serve` function is plain http handler with `http request` and `response writer` parameters. 
+- Firstly unmarshals the request to `AdmissionReview`, which contains information like `object`, `oldobject` and `userInfo`...
+- Then calls Webhook core function `mutate` to create `patch` that injects sidecar container and volume. 
+- Finally, unmarshals the response with admission decision and optional patch, sends it back to `apiserver`.
 
+For the part of `mutate` function, you get the free rein to complete it in your preferred way. Let's take my implementation as an example:
 ```
 // main mutation process
 func (whsvr *WebhookServer) mutate(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
@@ -177,17 +189,9 @@ func (whsvr *WebhookServer) mutate(ar *v1beta1.AdmissionReview) *v1beta1.Admissi
 	}
 }
 ```
-The `mutate` function skip `pod` in special `namespace` and creates `patch` based on injection policy. For complete code, please refer to https://github.com/morvencao/kube-mutating-webhook-tutorial/blob/master/webhook.go.
+From the code above, the `mutate` function calls [mutationRequired](https://github.com/morvencao/kube-mutating-webhook-tutorial/blob/master/webhook.go#L98-L130) to detemine whether mutation is required or not. For those requiring mutation, the `mutate` function gets mutation 'patch' from another function [createPatch](https://github.com/morvencao/kube-mutating-webhook-tutorial/blob/master/webhook.go#L196-L205). Pay attention to the little trick in function `mutationRequired`, we skip the `pods` without annotation `sidecar-injector-webhook.morven.me/inject: true`. That will be mentioned latter when we deployment applications. For complete code, please refer to https://github.com/morvencao/kube-mutating-webhook-tutorial/blob/master/webhook.go.
 
 #### Create Dockerfile and Build the Container
-
-Create `Dockerfile`:
-```
-FROM alpine:latest
-
-ADD kube-mutating-webhook-tutorial /kube-mutating-webhook-tutorial
-ENTRYPOINT ["./kube-mutating-webhook-tutorial"]
-```
 
 Create the `build` script:
 ```
@@ -197,6 +201,14 @@ docker build --no-cache -t morvencao/sidecar-injector:v1 .
 rm -rf kube-mutating-webhook-tutorial
 
 docker push morvencao/sidecar-injector:v1
+```
+
+And create `Dockerfile` as dependency of build script:
+```
+FROM alpine:latest
+
+ADD kube-mutating-webhook-tutorial /kube-mutating-webhook-tutorial
+ENTRYPOINT ["./kube-mutating-webhook-tutorial"]
 ```
 
 Before actually building the container, you need a [Docker](https://hub.docker.com/) ID account and change the image name&tag(in `Dockerfile` and `deployment.yaml`) to yours, then execute:
@@ -221,7 +233,7 @@ v1: digest: sha256:7a4889928ec5a8bcfb91b610dab812e5228d8dfbd2b540cd7a341c11f2472
 
 #### Create Sidecar Injection Configuration
 
-Now let's create a Kubernetes `ConfigMap`, which includes container and volume information that will be injected to the target pod.
+Now let's create a Kubernetes `ConfigMap`, which includes `container` and `volume` information that will be injected into the target pod.
 ```
 apiVersion: v1
 kind: ConfigMap
@@ -243,9 +255,9 @@ data:
         configMap:
           name: nginx-configmap
 ```
-From the above manifest, another ConfigMap including nginx conf is required. Here we put it in [nginxconfigmap.yaml](https://github.com/morvencao/kube-mutating-webhook-tutorial/blob/master/deployment/nginxconfigmap.yaml).
+From the above manifest, another ConfigMap including `nginx conf` is required. Here we put it in [nginxconfigmap.yaml](https://github.com/morvencao/kube-mutating-webhook-tutorial/blob/master/deployment/nginxconfigmap.yaml).
 
-Then deploy the two `ConfigMaps` to cluster:
+Then deploy the two `ConfigMap`s to cluster:
 ```
 [root@mstnode kube-mutating-webhook-tutorial]# kubectl create -f ./deployment/nginxconfigmap.yaml
 configmap "nginx-configmap" created
@@ -255,9 +267,9 @@ configmap "sidecar-injector-webhook-configmap" created
 
 #### Create Secret Including Signed key/cert Pair
 
-Https is enabled by sidecar injector `deployment` and `service`, so we need to create TLS certificate signed by Kubernetes CA for the sidecar injector to consume. For the complete creating and approving `CSR` process, please refer to https://kubernetes.io/docs/tasks/tls/managing-tls-in-a-cluster/. 
+Supporting `TLS` for external webhook server is required, because admission is a high security operation. so we need to create TLS certificate signed by `Kubernetes CA` for to secure the communcation between webhook server and `apiserver`. For the complete creating and approving `CSR` process, please refer to https://kubernetes.io/docs/tasks/tls/managing-tls-in-a-cluster/. 
 
-Here we'll write `webhook-create-signed-cert.sh` script to automatically create the cert/key pair and include it in a Kubernetes `secret`:
+For simplicity purposes, we refer to the [script](https://github.com/istio/istio/blob/master/install/kubernetes/webhook-create-signed-cert.sh) from `Istio` and write a similar script called `webhook-create-signed-cert.sh` to automatically create the cert/key pair and include it in a Kubernetes `secret`.
 ```
 #!/bin/bash
 while [[ $# -gt 0 ]]; do
@@ -374,8 +386,8 @@ secret "sidecar-injector-webhook-certs" created
 
 #### Create the Sidecar Injector Deployment and Service
 
-The `deployment` brings up 1 `pod` in which `sidecar-injector` container is running. And the container starts with special arguments:
-- `sidecarCfgFile` points to the sidecar injector configuration file mounted from `sidecar-injector-webhook-configmap` ConfigMap created above
+The `deployment` brings up 1 `pod` in which the `sidecar-injector` container is running.  The container starts with special arguments:
+- `sidecarCfgFile` pointing to the sidecar injector configuration file mounted from `sidecar-injector-webhook-configmap` ConfigMap created above
 - `tlsCertFile` and `tlsKeyFile` are cert/key pair mounted from `sidecar-injector-webhook-certs` Secret create by script above
 - `alsologtostderr` `v=4` and `2>&1` are logging arguments
 ```
@@ -418,7 +430,7 @@ spec:
             name: sidecar-injector-webhook-configmap
 ```
 
-The `service` exposes `pod` defined above labeled by `app=sidecar-injector` to make it accessible in cluster. This `service` will be referred by `MutatingWebhookConfiguration` in `clientConfig` section and by default `spec.ports.port` should be **443**(default https port).
+The `service` exposes the `pod` defined above labeled by `app=sidecar-injector` to make it accessible in cluster. This `service` will be referred by the `MutatingWebhookConfiguration` in `clientConfig` section and by default `spec.ports.port` should be **443**(default https port).
 ```
 apiVersion: v1
 kind: Service
@@ -434,20 +446,12 @@ spec:
     app: sidecar-injector
 ```
 
-Then deploy the above `Deployment` and `Service` to cluster:
+Next we deploy the above `Deployment` and `Service` to cluster and verify the `sidecar injector` webhook server is running:
 ```
 [root@mstnode kube-mutating-webhook-tutorial]# kubectl create -f ./deployment/deployment.yaml
 deployment "sidecar-injector-webhook-deployment" created
 [root@mstnode kube-mutating-webhook-tutorial]# kubectl create -f ./deployment/service.yaml
 service "sidecar-injector-webhook-svc" created
-```
-
-#### Create `MutatingWebhookConfiguration`
-
-`MutatingWebhookConfiguration` specifies which webhook admission servers are enabled and which resources are subject to the admission server. It is recommended that you first deploy the webhook admission server and make sure it is working properly before creating the `MutatingWebhookConfiguration`. Request will be unconditionally accepted or rejected based on `failurePolicy`.
-
-Make sure the `sidecar injector` webhook server is running:
-```
 [root@mstnode kube-mutating-webhook-tutorial]# kubectl get deployment
 NAME                                  DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
 sidecar-injector-webhook-deployment   1         1         1            1           2m
@@ -456,7 +460,11 @@ NAME                                                  READY     STATUS    RESTAR
 sidecar-injector-webhook-deployment-bbb689d69-fdbgj   1/1       Running   0          3m
 ```
 
-For now, we just create the `MutatingWebhookConfiguration` manifest:
+#### Configure webhook admission controller on the fly
+
+`MutatingWebhookConfiguration` specifies which webhook admission servers are enabled and which resources are subject to the admission server. It is recommended that you firstly deploy the webhook admission server and make sure it is working properly before creating the `MutatingWebhookConfiguration`. Otherwise, requests will be unconditionally accepted or rejected based on `failurePolicy`.
+
+For now, we create the `MutatingWebhookConfiguration` manifest with the following content:
 ```
 apiVersion: admissionregistration.k8s.io/v1beta1
 kind: MutatingWebhookConfiguration
@@ -483,12 +491,11 @@ webhooks:
 ```
 
 Line 8: `name` - name for the webhook, should be fully qualified. Mutiple mutating webhooks are sorted by providing order.
-Line 9: `clientConfig` - describes how to connect to the webhook admission server and the TLS certificate.
-In this case, we specify the `sidecar injector` service.
-Line 15: `rules` - specifies what resources and what action the webhook server handles. In this case, only intercepts request for creating of pods.
+Line 9: `clientConfig` - describes how to connect to the webhook admission server and the TLS certificate. In our case, we specify the `sidecar injector` service.
+Line 15: `rules` - specifies what resources and what actions the webhook server handles. In our case, only intercepts request for creating of pods.
+Line 20: `namespaceSelector` - `namespaceSelector` decides whether to send admission request the webhook server on an object based on whether the namespace for that object matches the selector.
 
-Before deploying the `MutatingWebhookConfiguration`, we need to replace the `${CA_BUNDLE}` with apiserver's default `caBundle`.
-Let's write the script `webhook-patch-ca-bundle.sh` to automate this process:
+Before deploying the `MutatingWebhookConfiguration`, we need to replace the `${CA_BUNDLE}` with apiserver's default `caBundle`. Let's write the script `webhook-patch-ca-bundle.sh` to automate this process:
 ```
 #!/bin/bash
 set -o errexit
@@ -513,7 +520,7 @@ Then execute:
 >   ./deployment/mutatingwebhook-ca-bundle.yaml
 ```
 
-Finally deploy `MutatingWebhookConfiguration`:
+Finally we can deploy `MutatingWebhookConfiguration`:
 ```
 [root@mstnode kube-mutating-webhook-tutorial]# kubectl create -f ./deployment/mutatingwebhook-ca-bundle.yaml
 mutatingwebhookconfiguration "sidecar-injector-webhook-cfg" created
@@ -522,9 +529,10 @@ NAME                           AGE
 sidecar-injector-webhook-cfg   11s
 ```
 
-#### Verify
+#### Verification and Troubleshooting
 
-Typically we create and deploy a sleep application to see if the sidecar can be injected.
+Now it's time to verify sidecar injector works as expected and try to see how to troubleshoot if you encounter issues.
+Typically we create and deploy a sleep application in `default` namespace to see if the sidecar can be injected.
 ```
 [root@mstnode kube-mutating-webhook-tutorial]# cat <<EOF | kubectl create -f -
 > apiVersion: extensions/v1beta1
@@ -549,11 +557,12 @@ Typically we create and deploy a sleep application to see if the sidecar can be 
 deployment "sleep" created
 ```
 
-Pay attentions to `spec.template.metadata.annotations`, new annotation is added:
+Pay close attention to the `spec.template.metadata.annotations` as there is a new annotation added:
 ```
 sidecar-injector-webhook.morven.me/inject: "true"
 ```
-For the sidecar injector has some logic to check the existance of above annotation before injecting sidecar container and volume. You're free to delete the logic or customize it before build the sidecar injector container.
+The sidecar injector has some logic to check the existence of the above annotation before injecting sidecar container and volume. 
+You're free to delete the logic or customize it before build the sidecar injector container.
 
 Check the `deployment` and `pod`:
 ```
@@ -566,21 +575,25 @@ NAME                                                  READY     STATUS    RESTAR
 sidecar-injector-webhook-deployment-bbb689d69-fdbgj   1/1       Running   0          18m
 sleep-6d79d8dc54-r66vz                                1/1       Running   0          1m
 ```
-Its not there. What's going on?
+It's not there. What's going on?
 Let's check the sidecar injector logs:
 ```
 [root@mstnode kube-mutating-webhook-tutorial]# kubectl logs -f sidecar-injector-webhook-deployment-bbb689d69-fdbgj
 I0314 08:48:15.140858       1 webhook.go:88] New configuration: sha256sum 21669464280f76170b88241fd79ecbca3dcebaec5c152a4a9a3e921ff742157f
 
 ```
-Seems that request hadn't been sent to `sidecar injector` webhook server. Looks like it is caused the issues in `MutatingWebhookConfiguration`. After reviewing `MutatingWebhookConfiguration`, we find:
-
+We can't find any logs that indicate webhook server got admission request, seems that request hadn't been sent to `sidecar injector` webhook server. 
+So there is a possibility that the issue is caused by configuration in `MutatingWebhookConfiguration`. Do a double check of `MutatingWebhookConfiguration` and we find following content:
 ```
     namespaceSelector:
       matchLabels:
         sidecar-injector: enabled
 ```
-NamespaceSelector decides whether to send admission request the webhook server based on whether the namespace for that object matches the selector. So we need label the `default` namespace with `sidecar-injector=enabled`:
+
+#### Control sidecar injector with `namespaceSelector`
+
+We have configured 'namespaceSelector' in `MutatingWebhookConfiguration`, which means only resources in namespace matching the selector will be sent to webhook server. So we need label the `default` namespace with `sidecar-injector=enabled`:
+
 ```
 [root@mstnode kube-mutating-webhook-tutorial]# kubectl label namespace default sidecar-injector=enabled
 namespace "default" labeled
@@ -591,7 +604,7 @@ kube-public   Active    1d
 kube-system   Active    1d
 ```
 
-We have configure in `MutatingWebhookConfiguration` that sidecar injection occurs at pod creation time. Kill the running pod and verify a new pod is created with the injected sidecar.
+We have configured the `MutatingWebhookConfiguration` resulting in the sidecar injection occuring at pod creation time. Kill the running pod and verify a new pod is created with the injected sidecar.
 ```
 [root@mstnode kube-mutating-webhook-tutorial]# kubectl delete pod sleep-6d79d8dc54-r66vz
 pod "sleep-6d79d8dc54-r66vz" deleted
@@ -649,10 +662,15 @@ spec:
     name: nginx-conf
 ...
 ```
+We can see that sidecar container and volume have been injected into sleep application successfully. Until now, we have working sidecar injector with `MutatingAdmissionWebhook`. With `namespaceSelector` we can easily control whether the pods in specified namespace will be injected or not. 
 
-Until to now, we have working sidecar injector with `MutatingAdmissionWebhook`. With `namespaceSelector` we can easily control whether the pods in specified namespace will be injected or not. In addition, we get another fine-grained control on sidecar injector by `annotation`. 
+But there is a problem for this, with the above configurations, all of the pods in `default` namespace will be injected with a sidecar, this may be not expected for some cases.
 
-In this case, we create another sleep application without `sidecar-injector-webhook.morven.me/inject: "true"` annotation:
+#### Control sidecar injector with `annotation`
+
+Thanks to flexibility of `MutatingAdmissionWebhook`, we can easily customized the mutating logic to filter resources with specified annotations. Remember the annotation `sidecar-injector-webhook.morven.me/inject: "true"` mentioned above? It can be used as an extra control on sidecar injector. I have written [some code](https://github.com/morvencao/kube-mutating-webhook-tutorial/blob/master/webhook.go#L98-L130) in webhook server to skip injecting for pod without the annotation.
+
+Let's give it a try. In this case, we create another sleep application without `sidecar-injector-webhook.morven.me/inject: "true"` annotation in `podTemplateSpec`:
 ```
 [root@mstnode kube-mutating-webhook-tutorial]# kubectl delete deployment sleep
 deployment "sleep" deleted
@@ -677,7 +695,7 @@ apiVersion: extensions/v1beta1
 deployment "sleep" created
 ```
 
-And then veridy sidecar injectr skipped injecting:
+And then verify the sidecar injector skipped the pod:
 ```
 [root@mstnode kube-mutating-webhook-tutorial]# kubectl get deployment
 NAME                                  DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
@@ -688,13 +706,28 @@ NAME                                                  READY     STATUS        RE
 sidecar-injector-webhook-deployment-bbb689d69-fdbgj   1/1       Running       0          45m
 sleep-776b7bcdcd-4bz58                                1/1       Running       0          21s
 ```
-From above output, we can see that the sleep application include only one container, and no data was injected.
+
+The output shows that the sleep application contains only one container, no extra container and volume injected.
+Then we patch the sleep deployment to add the additional annotation and verify it will be injected after recreated:
+```
+[root@mstnode kube-mutating-webhook-tutorial]# kubectl patch deployment sleep -p '{"spec":{"template":{"metadata":{"annotations":{"sidecar-injector-webhook.morven.me/inject": "true"}}}}}'
+deployment "sleep" patched
+[root@mstnode kube-mutating-webhook-tutorial]# kubectl delete pod sleep-776b7bcdcd-4bz58
+pod "sleep-776b7bcdcd-4bz58" deleted
+[root@mstnode kube-mutating-webhook-tutorial]# kubectl get pods
+NAME                                                  READY     STATUS              RESTARTS   AGE
+sidecar-injector-webhook-deployment-bbb689d69-fdbgj   1/1       Running             0          49m
+sleep-3e42ff9e6c-6f87b                                0/2       ContainerCreating   0          18s
+sleep-776b7bcdcd-4bz58                                1/1       Terminating         0          3m
+```
+As expected, the pod has been injected with extra sidecar container.
+Now, we got working sidecar injector with `mutatingAdmissionWebhook` and its coarse-grained control by `namespaceSelector` and fine-grained control by additional `annotation`.
 
 ## Conclusion
 
 `MutatingAdmissionWebhook` is one of easiest ways of extending Kubernetes with new policy controls, resources mutation...
 
-This feature will enable many more workloads and support ecosystem components, including [Istio](https://github.com/istio/istio) service mesh platform. From Istio 0.5.0, Istio have refactor the auto injection code with `MutatingAdmissionWebhook` to replace `initializers`.
+This feature will enable more workloads and support more ecosystem components, including [Istio](https://github.com/istio/istio) service mesh platform. Starting with Istio 0.5.0, Istio has refactored to support their auto injection code with `MutatingAdmissionWebhook` replacing `initializers`.
 
 ## Reference
 
