@@ -1,22 +1,21 @@
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sidecar-injector-webhook-deployment
+  name: admission-webhook-example-deployment
   labels:
-    app: sidecar-injector
+    app: admission-webhook-example
 spec:
   replicas: 1
   template:
     metadata:
       labels:
-        app: sidecar-injector
+        app: admission-webhook-example
     spec:
       containers:
-        - name: sidecar-injector
-          image: morvencao/sidecar-injector:v1
-          imagePullPolicy: IfNotPresent
+        - name: admission-webhook-example
+          image: martonsereg/admission-webhook-example:v1
+          imagePullPolicy: Always
           args:
-            - -sidecarCfgFile=/etc/webhook/config/sidecarconfig.yaml
             - -tlsCertFile=/etc/webhook/certs/cert.pem
             - -tlsKeyFile=/etc/webhook/certs/key.pem
             - -alsologtostderr
@@ -26,12 +25,10 @@ spec:
             - name: webhook-certs
               mountPath: /etc/webhook/certs
               readOnly: true
-            - name: webhook-config
-              mountPath: /etc/webhook/config
       volumes:
         - name: webhook-certs
           secret:
-            secretName: sidecar-injector-webhook-certs
-        - name: webhook-config
-          configMap:
-            name: sidecar-injector-webhook-configmap
+            secretName: spot-mutator-webhook-certs
+      serviceAccount: admission-webhook-example-sa
+      serviceAccountName: admission-webhook-example-sa
+

@@ -1,23 +1,22 @@
 apiVersion: admissionregistration.k8s.io/v1beta1
-kind: MutatingWebhookConfiguration
+kind: ValidatingWebhookConfiguration
 metadata:
-  name: mutating-webhook-example-cfg
+  name: validation-webhook-example-cfg
   labels:
     app: admission-webhook-example
 webhooks:
-  - name: mutating-example.banzaicloud.com
+  - name: required-labels.banzaicloud.com
     clientConfig:
       service:
-        name: admission-webhook-example-svc
+        name: admission-webhook-example-webhook-svc
         namespace: pipeline-infra
-        path: "/mutate"
+        path: "/validate"
       caBundle: ${CA_BUNDLE}
     rules:
       - operations: [ "CREATE" ]
-        apiGroups: [""]
+        apiGroups: ["apps", ""]
         apiVersions: ["v1"]
-        resources: ["pods"]
+        resources: ["deployments","services"]
     namespaceSelector:
       matchLabels:
         admission-webhook-example: enabled
-

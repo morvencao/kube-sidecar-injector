@@ -2,18 +2,6 @@
 
 
 [[projects]]
-  name = "github.com/PuerkitoBio/purell"
-  packages = ["."]
-  revision = "0bcb03f4b4d0a9428594752bd2a3b9aa0a9d4bd4"
-  version = "v1.1.0"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/PuerkitoBio/urlesc"
-  packages = ["."]
-  revision = "de5bf2ad457846296e2031421a34e2568e304e35"
-
-[[projects]]
   branch = "master"
   name = "github.com/docker/distribution"
   packages = [
@@ -23,43 +11,10 @@
   revision = "34c706e759240975178df82495f147559cc0edc1"
 
 [[projects]]
-  name = "github.com/emicklei/go-restful"
-  packages = [
-    ".",
-    "log"
-  ]
-  revision = "26b41036311f2da8242db402557a0dbd09dc83da"
-  version = "v2.6.0"
-
-[[projects]]
   name = "github.com/ghodss/yaml"
   packages = ["."]
   revision = "0ca9ea5df5451ffdf184b4428c902747c2c11cd7"
   version = "v1.0.0"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/go-openapi/jsonpointer"
-  packages = ["."]
-  revision = "779f45308c19820f1a69e9a4cd965f496e0da10f"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/go-openapi/jsonreference"
-  packages = ["."]
-  revision = "36d33bfe519efae5632669801b180bf1a245da3b"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/go-openapi/spec"
-  packages = ["."]
-  revision = "d8000b5bfbd1147255710505a27c735b6b2ae2ac"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/go-openapi/swag"
-  packages = ["."]
-  revision = "ceb469cb0fdf2d792f28d771bc05da6c606f55e5"
 
 [[projects]]
   name = "github.com/gogo/protobuf"
@@ -85,18 +40,7 @@
 [[projects]]
   name = "github.com/json-iterator/go"
   packages = ["."]
-  revision = "3353055b2a1a5ae1b6a8dfde887a524e7088f3a2"
-  version = "1.1.2"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/mailru/easyjson"
-  packages = [
-    "buffer",
-    "jlexer",
-    "jwriter"
-  ]
-  revision = "f594efddfa171111dc4349cd6e78e8f61dc7936f"
+  revision = "f2b4162afba35581b6d4a50d3b8f34e33c144682"
 
 [[projects]]
   name = "github.com/modern-go/concurrent"
@@ -149,8 +93,7 @@
     "unicode/bidi",
     "unicode/cldr",
     "unicode/norm",
-    "unicode/rangetable",
-    "width"
+    "unicode/rangetable"
   ]
   revision = "f21a4dfb5e38f5895301dc265a8def02365cc3d0"
   version = "v0.3.0"
@@ -168,30 +111,31 @@
   version = "v2.1.1"
 
 [[projects]]
-  branch = "release-1.9"
+  branch = "release-1.10"
   name = "k8s.io/api"
   packages = [
     "admission/v1beta1",
     "admissionregistration/v1beta1",
+    "apps/v1",
     "authentication/v1",
     "core/v1"
   ]
-  revision = "acf347b865f29325eb61f4cd2df11e86e073a5ee"
+  revision = "12444147eb1150aa5c80d2aae532cbc5b7be73d0"
 
 [[projects]]
-  branch = "master"
+  branch = "release-1.10"
   name = "k8s.io/apiextensions-apiserver"
   packages = ["pkg/features"]
-  revision = "9f7d28e4a66fed426627a89e57d82602a3d33a12"
+  revision = "f584b16eb23bd2a3fd292a027d698d95db427c5d"
 
 [[projects]]
-  branch = "release-1.9"
+  branch = "release-1.10"
   name = "k8s.io/apimachinery"
   packages = [
     "pkg/api/resource",
     "pkg/apis/meta/internalversion",
     "pkg/apis/meta/v1",
-    "pkg/apis/meta/v1alpha1",
+    "pkg/apis/meta/v1beta1",
     "pkg/conversion",
     "pkg/conversion/queryparams",
     "pkg/fields",
@@ -219,24 +163,19 @@
     "pkg/watch",
     "third_party/forked/golang/reflect"
   ]
-  revision = "19e3f5aa3adca672c153d324e6b7d82ff8935f03"
+  revision = "e386b2658ed20923da8cc9250e552f082899a1ee"
 
 [[projects]]
-  branch = "master"
+  branch = "release-1.10"
   name = "k8s.io/apiserver"
   packages = [
     "pkg/features",
     "pkg/util/feature"
   ]
-  revision = "8e2fdf029740242e7ff156baa1107b07e403e241"
+  revision = "88d4601515c27f180f7efc8705e4cc18dc19100d"
 
 [[projects]]
-  branch = "master"
-  name = "k8s.io/kube-openapi"
-  packages = ["pkg/common"]
-  revision = "50ae88d24ede7b8bad68e23c805b5d3da5c8abaf"
-
-[[projects]]
+  branch = "release-1.10"
   name = "k8s.io/kubernetes"
   packages = [
     "pkg/apis/autoscaling",
@@ -248,12 +187,11 @@
     "pkg/util/parsers",
     "pkg/util/pointer"
   ]
-  revision = "bee2d1505c4fe820744d26d41ecd3fdd4a3d6546"
-  version = "v1.9.4"
+  revision = "efe960cdc41ee7b18d408128dfb80babb5bc746a"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "5fd13a1e69dcceaf60db48662815ef885857cb5db27072d705b32ee60241a44b"
+  inputs-digest = "06a26315505b7296c859f4b1714f84b4d13396c3883578dc071f52a3e0cb2999"
   solver-name = "gps-cdcl"
   solver-version = 1
