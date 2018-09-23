@@ -27,14 +27,31 @@ var (
 	defaulter = runtime.ObjectDefaulter(runtimeScheme)
 )
 
-var ignoredNamespaces = []string{
-	metav1.NamespaceSystem,
-	metav1.NamespacePublic,
-}
+var (
+	ignoredNamespaces = []string{
+		metav1.NamespaceSystem,
+		metav1.NamespacePublic,
+	}
+	requiredLabels = []string{
+		nameLabel,
+		instanceLabel,
+		versionLabel,
+		componentLabel,
+		partOfLabel,
+		managedByLabel,
+	}
+)
 
 const (
-	admissionWebhookAnnotationInjectKey = "admission-webhook-example.banzaicloud.com/inject"
-	admissionWebhookAnnotationStatusKey = "admission-webhook-example.banzaicloud.com/status"
+	admissionWebhookAnnotationValidateKey = "admission-webhook-example.banzaicloud.com/validate"
+	admissionWebhookAnnotationStatusKey   = "admission-webhook-example.banzaicloud.com/status"
+
+	nameLabel      = "app.kubernetes.io/name"
+	instanceLabel  = "app.kubernetes.io/instance"
+	versionLabel   = "app.kubernetes.io/version"
+	componentLabel = "app.kubernetes.io/component"
+	partOfLabel    = "app.kubernetes.io/part-of"
+	managedByLabel = "app.kubernetes.io/managed-by"
 )
 
 type WebhookServer struct {
@@ -73,12 +90,12 @@ func applyDefaultsWorkaround(containers []corev1.Container, volumes []corev1.Vol
 	})
 }
 
-// Check whether the target resource need to be mutated
-func admissionRequired(ignoredList []string, metadata *metav1.ObjectMeta) bool {
+// Check whether the target resource need to be validated
+func validationRequired(ignoredList []string, metadata *metav1.ObjectMeta) bool {
 	// skip special kubernetes system namespaces
 	for _, namespace := range ignoredList {
 		if metadata.Namespace == namespace {
-			glog.Infof("Skip mutation for %v for it' in special namespace:%v", metadata.Name, metadata.Namespace)
+			glog.Infof("Skip validation for %v for it's in special namespace:%v", metadata.Name, metadata.Namespace)
 			return false
 		}
 	}
@@ -88,22 +105,25 @@ func admissionRequired(ignoredList []string, metadata *metav1.ObjectMeta) bool {
 		annotations = map[string]string{}
 	}
 
-	status := annotations[admissionWebhookAnnotationStatusKey]
-
-	// determine whether to perform mutation based on annotation for the target resource
 	var required bool
-	if strings.ToLower(status) == "injected" {
+	switch strings.ToLower(annotations[admissionWebhookAnnotationValidateKey]) {
+	default:
+		required = true
+	case "n", "no", "false", "off":
 		required = false
-	} else {
-		switch strings.ToLower(annotations[admissionWebhookAnnotationInjectKey]) {
-		default:
-			required = false
-		case "y", "yes", "true", "on":
-			required = true
-		}
 	}
 
-	glog.Infof("Mutation policy for %v/%v: status: %q required:%v", metadata.Namespace, metadata.Name, status, required)
+	//status := annotations[admissionWebhookAnnotationStatusKey]
+	//
+	//// determine whether to perform mutation based on annotation for the target resource
+	//
+	//if strings.ToLower(status) == "injected" {
+	//	required = false
+	//} else {
+	//
+	//}
+
+	glog.Infof("Validation policy for %v/%v: required:%v", metadata.Namespace, metadata.Name, required)
 	return required
 }
 
@@ -185,18 +205,21 @@ func admissionRequired(ignoredList []string, metadata *metav1.ObjectMeta) bool {
 // validate deployments and services
 func (whsvr *WebhookServer) validate(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	req := ar.Request
-	requiredLabels := []string{
-		"app.kubernetes.io/name",
-		"app.kubernetes.io/instance",
-		"app.kubernetes.io/version",
-		"app.kubernetes.io/component",
-		"app.kubernetes.io/part-of",
-		"app.kubernetes.io/managed-by",
+	var (
+		availableLabels                 map[string]string
+		objectMeta                      *metav1.ObjectMeta
+		resourceNamespace, resourceName string
+	)
+
+	glog.Infof("AdmissionReview for Kind=%v, Namespace=%v Name=%v (%v) UID=%v patchOperation=%v UserInfo=%v",
+		req.Kind, req.Namespace, req.Name, resourceName, req.UID, req.Operation, req.UserInfo)
+
+	if !validationRequired(ignoredNamespaces, objectMeta) {
+		glog.Infof("Skipping validation for %s/%s due to policy check", resourceNamespace, resourceName)
+		return &v1beta1.AdmissionResponse{
+			Allowed: true,
+		}
 	}
-	var availableLabels map[string]string
-	var objectMeta *metav1.ObjectMeta
-	var resourceName string
-	var resourceNamespace string
 
 	switch req.Kind.Kind {
 	case "Deployment":
@@ -223,17 +246,6 @@ func (whsvr *WebhookServer) validate(ar *v1beta1.AdmissionReview) *v1beta1.Admis
 		}
 		resourceName, resourceNamespace, objectMeta = service.Name, service.Namespace, &service.ObjectMeta
 		availableLabels = service.Labels
-	}
-
-	glog.Infof("AdmissionReview for Kind=%v, Namespace=%v Name=%v (%v) UID=%v patchOperation=%v UserInfo=%v",
-		req.Kind, req.Namespace, req.Name, resourceName, req.UID, req.Operation, req.UserInfo)
-
-	// determine whether to perform mutation
-	if !admissionRequired(ignoredNamespaces, objectMeta) {
-		glog.Infof("Skipping mutation for %s/%s due to policy check", resourceNamespace, resourceName)
-		return &v1beta1.AdmissionResponse{
-			Allowed: true,
-		}
 	}
 
 	var allowed bool
@@ -272,7 +284,7 @@ func (whsvr *WebhookServer) mutate(ar *v1beta1.AdmissionReview) *v1beta1.Admissi
 		req.Kind, req.Namespace, req.Name, pod.Name, req.UID, req.Operation, req.UserInfo)
 
 	// determine whether to perform mutation
-	if !admissionRequired(ignoredNamespaces, &pod.ObjectMeta) {
+	if !validationRequired(ignoredNamespaces, &pod.ObjectMeta) {
 		glog.Infof("Skipping mutation for %s/%s due to policy check", pod.Namespace, pod.Name)
 		return &v1beta1.AdmissionResponse{
 			Allowed: true,
