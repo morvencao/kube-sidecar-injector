@@ -9,7 +9,7 @@ webhooks:
     clientConfig:
       service:
         name: admission-webhook-example-webhook-svc
-        namespace: pipeline-infra
+        namespace: default
         path: "/validate"
       caBundle: ${CA_BUNDLE}
     rules:

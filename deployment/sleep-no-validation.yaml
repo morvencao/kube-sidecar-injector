@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: sleep
+  annotations:
+    admission-webhook-example.banzaicloud.com/validate: "false"
 spec:
   replicas: 3
   selector:

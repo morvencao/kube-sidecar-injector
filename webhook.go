@@ -214,13 +214,6 @@ func (whsvr *WebhookServer) validate(ar *v1beta1.AdmissionReview) *v1beta1.Admis
 	glog.Infof("AdmissionReview for Kind=%v, Namespace=%v Name=%v (%v) UID=%v patchOperation=%v UserInfo=%v",
 		req.Kind, req.Namespace, req.Name, resourceName, req.UID, req.Operation, req.UserInfo)
 
-	if !validationRequired(ignoredNamespaces, objectMeta) {
-		glog.Infof("Skipping validation for %s/%s due to policy check", resourceNamespace, resourceName)
-		return &v1beta1.AdmissionResponse{
-			Allowed: true,
-		}
-	}
-
 	switch req.Kind.Kind {
 	case "Deployment":
 		var deployment appsv1.Deployment
@@ -248,8 +241,17 @@ func (whsvr *WebhookServer) validate(ar *v1beta1.AdmissionReview) *v1beta1.Admis
 		availableLabels = service.Labels
 	}
 
-	var allowed bool
+	if !validationRequired(ignoredNamespaces, objectMeta) {
+		glog.Infof("Skipping validation for %s/%s due to policy check", resourceNamespace, resourceName)
+		return &v1beta1.AdmissionResponse{
+			Allowed: true,
+		}
+	}
+
+	allowed := true
 	var result *metav1.Status
+	glog.Info("available labels:", availableLabels)
+	glog.Info("required labels", requiredLabels)
 	for _, rl := range requiredLabels {
 		if _, ok := availableLabels[rl]; !ok {
 			allowed = false

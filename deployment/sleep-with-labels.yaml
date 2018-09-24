@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sleep
+  labels:
+    app.kubernetes.io/name: sleep
+    app.kubernetes.io/instance: sleep
+    app.kubernetes.io/version: "0.1"
+    app.kubernetes.io/component: dummy
+    app.kubernetes.io/part-of: admission-webhook-example
+    app.kubernetes.io/managed-by: kubernetes
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sleep
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sleep
+    spec:
+      containers:
+      - name: sleep
+        image: tutum/curl
+        command: ["/bin/sleep","infinity"]
+        imagePullPolicy: IfNotPresent

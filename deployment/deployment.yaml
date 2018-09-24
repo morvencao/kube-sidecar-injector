@@ -6,6 +6,9 @@ metadata:
     app: admission-webhook-example
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: admission-webhook-example
   template:
     metadata:
       labels:
@@ -28,7 +31,4 @@ spec:
       volumes:
         - name: webhook-certs
           secret:
-            secretName: spot-mutator-webhook-certs
-      serviceAccount: admission-webhook-example-sa
-      serviceAccountName: admission-webhook-example-sa
-
+            secretName: admission-webhook-example-certs

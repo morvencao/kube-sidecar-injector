@@ -9,7 +9,6 @@ webhooks:
     clientConfig:
       service:
         name: admission-webhook-example-svc
-        namespace: pipeline-infra
         path: "/mutate"
       caBundle: ${CA_BUNDLE}
     rules:

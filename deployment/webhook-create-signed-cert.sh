@@ -48,7 +48,7 @@ done
 
 [ -z ${service} ] && service=admission-webhook-example-svc
 [ -z ${secret} ] && secret=admission-webhook-example-certs
-[ -z ${namespace} ] && namespace=pipeline-infra
+[ -z ${namespace} ] && namespace=default
 
 if [ ! -x "$(command -v openssl)" ]; then
     echo "openssl not found"
