@@ -40,10 +40,19 @@ var (
 		partOfLabel,
 		managedByLabel,
 	}
+	addLabels = map[string]string{
+		nameLabel:      NA,
+		instanceLabel:  NA,
+		versionLabel:   NA,
+		componentLabel: NA,
+		partOfLabel:    NA,
+		managedByLabel: NA,
+	}
 )
 
 const (
 	admissionWebhookAnnotationValidateKey = "admission-webhook-example.banzaicloud.com/validate"
+	admissionWebhookAnnotationMutateKey   = "admission-webhook-example.banzaicloud.com/mutate"
 	admissionWebhookAnnotationStatusKey   = "admission-webhook-example.banzaicloud.com/status"
 
 	nameLabel      = "app.kubernetes.io/name"
@@ -52,6 +61,8 @@ const (
 	componentLabel = "app.kubernetes.io/component"
 	partOfLabel    = "app.kubernetes.io/part-of"
 	managedByLabel = "app.kubernetes.io/managed-by"
+
+	NA = "not_available"
 )
 
 type WebhookServer struct {
@@ -80,18 +91,7 @@ func init() {
 	_ = v1.AddToScheme(runtimeScheme)
 }
 
-// (https://github.com/kubernetes/kubernetes/issues/57982)
-func applyDefaultsWorkaround(containers []corev1.Container, volumes []corev1.Volume) {
-	defaulter.Default(&corev1.Pod{
-		Spec: corev1.PodSpec{
-			Containers: containers,
-			Volumes:    volumes,
-		},
-	})
-}
-
-// Check whether the target resource need to be validated
-func validationRequired(ignoredList []string, metadata *metav1.ObjectMeta) bool {
+func admissionRequired(ignoredList []string, admissionAnnotationKey string, metadata *metav1.ObjectMeta) bool {
 	// skip special kubernetes system namespaces
 	for _, namespace := range ignoredList {
 		if metadata.Namespace == namespace {
@@ -106,101 +106,82 @@ func validationRequired(ignoredList []string, metadata *metav1.ObjectMeta) bool 
 	}
 
 	var required bool
-	switch strings.ToLower(annotations[admissionWebhookAnnotationValidateKey]) {
+	switch strings.ToLower(annotations[admissionAnnotationKey]) {
 	default:
 		required = true
 	case "n", "no", "false", "off":
 		required = false
 	}
+	return required
+}
 
-	//status := annotations[admissionWebhookAnnotationStatusKey]
-	//
-	//// determine whether to perform mutation based on annotation for the target resource
-	//
-	//if strings.ToLower(status) == "injected" {
-	//	required = false
-	//} else {
-	//
-	//}
+func mutationRequired(ignoredList []string, metadata *metav1.ObjectMeta) bool {
+	required := admissionRequired(ignoredList, admissionWebhookAnnotationMutateKey, metadata)
+	annotations := metadata.GetAnnotations()
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+	status := annotations[admissionWebhookAnnotationStatusKey]
 
+	if strings.ToLower(status) == "mutated" {
+		required = false
+	}
+
+	glog.Infof("Mutation policy for %v/%v: required:%v", metadata.Namespace, metadata.Name, required)
+	return required
+}
+
+func validationRequired(ignoredList []string, metadata *metav1.ObjectMeta) bool {
+	required := admissionRequired(ignoredList, admissionWebhookAnnotationValidateKey, metadata)
 	glog.Infof("Validation policy for %v/%v: required:%v", metadata.Namespace, metadata.Name, required)
 	return required
 }
 
-//func addContainer(target, added []corev1.Container, basePath string) (patch []patchOperation) {
-//	first := len(target) == 0
-//	var value interface{}
-//	for _, add := range added {
-//		value = add
-//		path := basePath
-//		if first {
-//			first = false
-//			value = []corev1.Container{add}
-//		} else {
-//			path = path + "/-"
-//		}
-//		patch = append(patch, patchOperation{
-//			Op:    "add",
-//			Path:  path,
-//			Value: value,
-//		})
-//	}
-//	return patch
-//}
+func updateAnnotation(target map[string]string, added map[string]string) (patch []patchOperation) {
+	for key, value := range added {
+		if target == nil || target[key] == "" {
+			target = map[string]string{}
+			patch = append(patch, patchOperation{
+				Op:   "add",
+				Path: "/metadata/annotations",
+				Value: map[string]string{
+					key: value,
+				},
+			})
+		} else {
+			patch = append(patch, patchOperation{
+				Op:    "replace",
+				Path:  "/metadata/annotations/" + key,
+				Value: value,
+			})
+		}
+	}
+	return patch
+}
 
-//func addVolume(target, added []corev1.Volume, basePath string) (patch []patchOperation) {
-//	first := len(target) == 0
-//	var value interface{}
-//	for _, add := range added {
-//		value = add
-//		path := basePath
-//		if first {
-//			first = false
-//			value = []corev1.Volume{add}
-//		} else {
-//			path = path + "/-"
-//		}
-//		patch = append(patch, patchOperation{
-//			Op:    "add",
-//			Path:  path,
-//			Value: value,
-//		})
-//	}
-//	return patch
-//}
+func updateLabels(target map[string]string, added map[string]string) (patch []patchOperation) {
+	values := make(map[string]string)
+	for key, value := range added {
+		if target == nil || target[key] == "" {
+			values[key] = value
+		}
+	}
+	patch = append(patch, patchOperation{
+		Op:    "add",
+		Path:  "/metadata/labels",
+		Value: values,
+	})
+	return patch
+}
 
-//func updateAnnotation(target map[string]string, added map[string]string) (patch []patchOperation) {
-//	for key, value := range added {
-//		if target == nil || target[key] == "" {
-//			target = map[string]string{}
-//			patch = append(patch, patchOperation{
-//				Op:   "add",
-//				Path: "/metadata/annotations",
-//				Value: map[string]string{
-//					key: value,
-//				},
-//			})
-//		} else {
-//			patch = append(patch, patchOperation{
-//				Op:    "replace",
-//				Path:  "/metadata/annotations/" + key,
-//				Value: value,
-//			})
-//		}
-//	}
-//	return patch
-//}
+func createPatch(availableAnnotations map[string]string, annotations map[string]string, availableLabels map[string]string, labels map[string]string) ([]byte, error) {
+	var patch []patchOperation
 
-//// create mutation patch for resoures
-//func createPatch(pod *corev1.Pod, sidecarConfig *Config, annotations map[string]string) ([]byte, error) {
-//	var patch []patchOperation
-//
-//	patch = append(patch, addContainer(pod.Spec.Containers, sidecarConfig.Containers, "/spec/containers")...)
-//	patch = append(patch, addVolume(pod.Spec.Volumes, sidecarConfig.Volumes, "/spec/volumes")...)
-//	patch = append(patch, updateAnnotation(pod.Annotations, annotations)...)
-//
-//	return json.Marshal(patch)
-//}
+	patch = append(patch, updateAnnotation(availableAnnotations, annotations)...)
+	patch = append(patch, updateLabels(availableLabels, labels)...)
+
+	return json.Marshal(patch)
+}
 
 // validate deployments and services
 func (whsvr *WebhookServer) validate(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
@@ -270,11 +251,53 @@ func (whsvr *WebhookServer) validate(ar *v1beta1.AdmissionReview) *v1beta1.Admis
 
 // main mutation process
 func (whsvr *WebhookServer) mutate(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
-
 	req := ar.Request
-	var pod corev1.Pod
-	if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
-		glog.Errorf("Could not unmarshal raw object: %v", err)
+	var (
+		availableLabels, availableAnnotations map[string]string
+		objectMeta                            *metav1.ObjectMeta
+		resourceNamespace, resourceName       string
+	)
+
+	glog.Infof("AdmissionReview for Kind=%v, Namespace=%v Name=%v (%v) UID=%v patchOperation=%v UserInfo=%v",
+		req.Kind, req.Namespace, req.Name, resourceName, req.UID, req.Operation, req.UserInfo)
+
+	switch req.Kind.Kind {
+	case "Deployment":
+		var deployment appsv1.Deployment
+		if err := json.Unmarshal(req.Object.Raw, &deployment); err != nil {
+			glog.Errorf("Could not unmarshal raw object: %v", err)
+			return &v1beta1.AdmissionResponse{
+				Result: &metav1.Status{
+					Message: err.Error(),
+				},
+			}
+		}
+		resourceName, resourceNamespace, objectMeta = deployment.Name, deployment.Namespace, &deployment.ObjectMeta
+		availableLabels = deployment.Labels
+	case "Service":
+		var service corev1.Service
+		if err := json.Unmarshal(req.Object.Raw, &service); err != nil {
+			glog.Errorf("Could not unmarshal raw object: %v", err)
+			return &v1beta1.AdmissionResponse{
+				Result: &metav1.Status{
+					Message: err.Error(),
+				},
+			}
+		}
+		resourceName, resourceNamespace, objectMeta = service.Name, service.Namespace, &service.ObjectMeta
+		availableLabels = service.Labels
+	}
+
+	if !mutationRequired(ignoredNamespaces, objectMeta) {
+		glog.Infof("Skipping validation for %s/%s due to policy check", resourceNamespace, resourceName)
+		return &v1beta1.AdmissionResponse{
+			Allowed: true,
+		}
+	}
+
+	annotations := map[string]string{admissionWebhookAnnotationStatusKey: "mutated"}
+	patchBytes, err := createPatch(availableAnnotations, annotations, availableLabels, addLabels)
+	if err != nil {
 		return &v1beta1.AdmissionResponse{
 			Result: &metav1.Status{
 				Message: err.Error(),
@@ -282,33 +305,10 @@ func (whsvr *WebhookServer) mutate(ar *v1beta1.AdmissionReview) *v1beta1.Admissi
 		}
 	}
 
-	glog.Infof("AdmissionReview for Kind=%v, Namespace=%v Name=%v (%v) UID=%v patchOperation=%v UserInfo=%v",
-		req.Kind, req.Namespace, req.Name, pod.Name, req.UID, req.Operation, req.UserInfo)
-
-	// determine whether to perform mutation
-	if !validationRequired(ignoredNamespaces, &pod.ObjectMeta) {
-		glog.Infof("Skipping mutation for %s/%s due to policy check", pod.Namespace, pod.Name)
-		return &v1beta1.AdmissionResponse{
-			Allowed: true,
-		}
-	}
-
-	// Workaround: https://github.com/kubernetes/kubernetes/issues/57982
-	//applyDefaultsWorkaround(whsvr.sidecarConfig.Containers, whsvr.sidecarConfig.Volumes)
-	//annotations := map[string]string{admissionWebhookAnnotationStatusKey: "injected"}
-	//patchBytes, err := createPatch(&pod, whsvr.sidecarConfig, annotations)
-	//if err != nil {
-	//	return &v1beta1.AdmissionResponse{
-	//		Result: &metav1.Status{
-	//			Message: err.Error(),
-	//		},
-	//	}
-	//}
-
-	//glog.Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
+	glog.Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
 	return &v1beta1.AdmissionResponse{
 		Allowed: true,
-		//Patch:   patchBytes,
+		Patch:   patchBytes,
 		PatchType: func() *v1beta1.PatchType {
 			pt := v1beta1.PatchTypeJSONPatch
 			return &pt

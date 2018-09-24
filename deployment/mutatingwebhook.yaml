@@ -9,13 +9,14 @@ webhooks:
     clientConfig:
       service:
         name: admission-webhook-example-svc
+        namespace: default
         path: "/mutate"
       caBundle: ${CA_BUNDLE}
     rules:
       - operations: [ "CREATE" ]
-        apiGroups: [""]
+        apiGroups: ["apps", ""]
         apiVersions: ["v1"]
-        resources: ["pods"]
+        resources: ["deployments","services"]
     namespaceSelector:
       matchLabels:
         admission-webhook-example: enabled
