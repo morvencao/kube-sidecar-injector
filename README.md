@@ -1,6 +1,9 @@
-# Kubernetes Mutating Admission Webhook for sidecar injection
+# Kubernetes Admission Webhook example
 
-This tutoral shows how to build and deploy a [MutatingAdmissionWebhook](https://kubernetes.io/docs/admin/admission-controllers/#mutatingadmissionwebhook-beta-in-19) that injects a nginx sidecar container into pod prior to persistence of the object.
+This tutoral shows how to build and deploy an [AdmissionWebhook](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#admission-webhooks).
+
+The Kubernetes [documentation](https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/) contains a common set of recommended labels that allows tools to work interoperably, describing objects in a common manner that all tools can understand. In addition to supporting tooling, the recommended labels describe applications in a way that can be queried.
+In our validating webhook example we make these labels required on deployments and services, so this webhook rejects every deployment and every service that doesn’t have these labels set. The mutating webhook in the example adds all the missing required labels with `not_available` set as the value.
 
 ## Prerequisites
 
@@ -30,81 +33,6 @@ go get -u github.com/golang/dep/cmd/dep
 ./build
 ```
 
-## Deploy
+## How does it work?
 
-1. Create a signed cert/key pair and store it in a Kubernetes `secret` that will be consumed by sidecar deployment
-```
-./install/kubernetes/webhook-create-signed-cert.sh \
-    --service sidecar-injector-webhook-svc \
-    --secret sidecar-injector-webhook-certs \
-    --namespace default
-```
-
-2. Patch the `MutatingWebhookConfiguration` by set `caBundle` with correct value from Kubernetes cluster
-```
-cat deployment/mutatingwebhook.yaml | \
-    deployment/webhook-patch-ca-bundle.sh > \
-    deployment/mutatingwebhook-ca-bundle.yaml
-```
-
-3. Deploy resources
-```
-kubectl create -f deployment/nginxconfigmap.yaml
-kubectl create -f deployment/configmap.yaml
-kubectl create -f deployment/deployment.yaml
-kubectl create -f deployment/service.yaml
-kubectl create -f deployment/mutatingwebhook-ca-bundle.yaml
-```
-
-## Verify
-
-1. The sidecar inject webhook should be running
-```
-[root@mstnode ~]# kubectl get pods
-NAME                                                  READY     STATUS    RESTARTS   AGE
-sidecar-injector-webhook-deployment-bbb689d69-882dd   1/1       Running   0          5m
-[root@mstnode ~]# kubectl get deployment
-NAME                                  DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
-sidecar-injector-webhook-deployment   1         1         1            1           5m
-```
-
-2. Label the default namespace with `sidecar-injector=enabled`
-```
-kubectl label namespace default sidecar-injector=enabled
-[root@mstnode ~]# kubectl get namespace -L sidecar-injector
-NAME          STATUS    AGE       SIDECAR-INJECTOR
-default       Active    18h       enabled
-kube-public   Active    18h
-kube-system   Active    18h
-```
-
-3. Deploy an app in Kubernetes cluster, take `sleep` app as an example
-```
-[root@mstnode ~]# cat <<EOF | kubectl create -f -
-apiVersion: extensions/v1beta1
-kind: Deployment
-metadata:
-  name: sleep
-spec:
-  replicas: 1
-  template:
-    metadata:
-      annotations:
-        sidecar-injector-webhook.morven.me/inject: "yes"
-      labels:
-        app: sleep
-    spec:
-      containers:
-      - name: sleep
-        image: tutum/curl
-        command: ["/bin/sleep","infinity"]
-        imagePullPolicy: 
-EOF
-```
-
-4. Verify sidecar container injected
-```
-[root@mstnode ~]# kubectl get pods
-NAME                     READY     STATUS        RESTARTS   AGE
-sleep-5c55f85f5c-tn2cs   2/2       Running       0          1m
-```
+We have a blog post that explains webhooks in depth with the help of this example. Check [it](https://banzaicloud.com/blog/k8s-admission-webhooks/) out!
