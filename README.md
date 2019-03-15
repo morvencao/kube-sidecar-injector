@@ -34,7 +34,7 @@ go get -u github.com/golang/dep/cmd/dep
 
 1. Create a signed cert/key pair and store it in a Kubernetes `secret` that will be consumed by sidecar deployment
 ```
-./install/kubernetes/webhook-create-signed-cert.sh \
+./deployment/webhook-create-signed-cert.sh \
     --service sidecar-injector-webhook-svc \
     --secret sidecar-injector-webhook-certs \
     --namespace default
