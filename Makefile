@@ -67,7 +67,7 @@ test:
 
 build:
 	@echo "Building the $(IMAGE_NAME) binary..."
-	@CGO_ENABLED=0 go build -o build/_output/bin/$(IMAGE_NAME) .
+	@CGO_ENABLED=0 go build -o build/_output/bin/$(IMAGE_NAME) ./cmd/
 
 ############################################################
 # image section
