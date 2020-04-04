@@ -17,18 +17,26 @@ In addition, the `MutatingAdmissionWebhook` and `ValidatingAdmissionWebhook` adm
 
 ## Build
 
-1. Setup dep
+1. Build binary
 
-   The repo uses [dep](https://github.com/golang/dep) as the dependency management tool for its Go codebase. Install `dep` by the following command:
 ```
-go get -u github.com/golang/dep/cmd/dep
+make build
+
 ```
 
-2. Build and push docker image
+2. Build docker image
    
 ```
-./build
+make build-image
 ```
+
+2.push docker image
+
+```
+make push-image
+```
+
+> Note: need to login the docker registry before pushing the image.
 
 ## Deploy
 
