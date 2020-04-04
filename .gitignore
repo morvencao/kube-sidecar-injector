@@ -11,3 +11,5 @@
 *.out
 
 vendor/*
+
+build/_output
