@@ -19,8 +19,7 @@ RUN mkdir /licenses
 COPY LICENSE /licenses
 
 # set entrypoint
-ENTRYPOINT ["./sidecar-injector"]
+ENTRYPOINT ["/usr/local/bin/sidecar-injector"]
 
 # switch to non-root user
 USER ${USER_UID}
-

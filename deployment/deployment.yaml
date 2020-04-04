@@ -1,11 +1,15 @@
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: sidecar-injector-webhook-deployment
+  namespace: sidecar-injector
   labels:
     app: sidecar-injector
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: sidecar-injector
   template:
     metadata:
       labels:
@@ -13,25 +17,25 @@ spec:
     spec:
       containers:
         - name: sidecar-injector
-          image: morvencao/sidecar-injector:v1
+          image: morvencao/sidecar-injector:latest
           imagePullPolicy: IfNotPresent
           args:
-            - -sidecarCfgFile=/etc/webhook/config/sidecarconfig.yaml
-            - -tlsCertFile=/etc/webhook/certs/cert.pem
-            - -tlsKeyFile=/etc/webhook/certs/key.pem
-            - -alsologtostderr
-            - -v=4
-            - 2>&1
+          - -sidecarCfgFile=/etc/webhook/config/sidecarconfig.yaml
+          - -tlsCertFile=/etc/webhook/certs/cert.pem
+          - -tlsKeyFile=/etc/webhook/certs/key.pem
+          - -alsologtostderr
+          - -v=4
+          - 2>&1
           volumeMounts:
-            - name: webhook-certs
-              mountPath: /etc/webhook/certs
-              readOnly: true
-            - name: webhook-config
-              mountPath: /etc/webhook/config
+          - name: webhook-certs
+            mountPath: /etc/webhook/certs
+            readOnly: true
+          - name: webhook-config
+            mountPath: /etc/webhook/config
       volumes:
-        - name: webhook-certs
-          secret:
-            secretName: sidecar-injector-webhook-certs
-        - name: webhook-config
-          configMap:
-            name: sidecar-injector-webhook-configmap
+      - name: webhook-certs
+        secret:
+          secretName: sidecar-injector-webhook-certs
+      - name: webhook-config
+        configMap:
+          name: sidecar-injector-webhook-configmap
