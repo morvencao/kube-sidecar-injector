@@ -5,18 +5,18 @@ metadata:
   labels:
     app: sidecar-injector
 webhooks:
-  - name: sidecar-injector.morven.me
-    clientConfig:
-      service:
-        name: sidecar-injector-webhook-svc
-        namespace: default
-        path: "/mutate"
-      caBundle: ${CA_BUNDLE}
-    rules:
-      - operations: [ "CREATE" ]
-        apiGroups: [""]
-        apiVersions: ["v1"]
-        resources: ["pods"]
-    namespaceSelector:
-      matchLabels:
-        sidecar-injector: enabled
+- name: sidecar-injector.morven.me
+  clientConfig:
+    service:
+      name: sidecar-injector-webhook-svc
+      namespace: sidecar-injector
+      path: "/mutate"
+    caBundle: ${CA_BUNDLE}
+  rules:
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: [""]
+    apiVersions: ["v1"]
+    resources: ["pods"]
+  namespaceSelector:
+    matchLabels:
+      sidecar-injection: enabled
