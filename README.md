@@ -65,19 +65,19 @@ admissionregistration.k8s.io/v1beta1
 3. Patch the `MutatingWebhookConfiguration` by set `caBundle` with correct value from Kubernetes cluster:
 
 ```
-# cat deploy/mutatingwebhook.yaml | \
-    deploy/webhook-patch-ca-bundle.sh > \
-    deploy/mutatingwebhook-ca-bundle.yaml
+# cat deployment/mutatingwebhook.yaml | \
+    deployment/webhook-patch-ca-bundle.sh > \
+    deployment/mutatingwebhook-ca-bundle.yaml
 ```
 
 4. Deploy resources:
 
 ```
-# kubectl create -f deploy/nginxconfigmap.yaml
-# kubectl create -f deploy/configmap.yaml
-# kubectl create -f deploy/deployment.yaml
-# kubectl create -f deploy/service.yaml
-# kubectl create -f deploy/mutatingwebhook-ca-bundle.yaml
+# kubectl create -f deployment/nginxconfigmap.yaml
+# kubectl create -f deployment/configmap.yaml
+# kubectl create -f deployment/deployment.yaml
+# kubectl create -f deployment/service.yaml
+# kubectl create -f deployment/mutatingwebhook-ca-bundle.yaml
 ```
 
 ## Verify
