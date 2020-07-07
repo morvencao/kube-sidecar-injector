@@ -8,7 +8,7 @@ set -o pipefail
 
 export CA_BUNDLE=$(kubectl config view --raw --minify --flatten -o jsonpath='{.clusters[].cluster.certificate-authority-data}')
 
-if [ -z "${CA_BUNDLE}"] then
+if [ -z "${CA_BUNDLE}" ]; then
     export CA_BUNDLE=$(kubectl get secrets -o jsonpath="{.items[?(@.metadata.annotations['kubernetes\.io/service-account\.name']=='default')].data.ca\.crt}")
 fi
 
