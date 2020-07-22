@@ -10,7 +10,7 @@ This script uses k8s' CertificateSigningRequest API to a generate a
 certificate signed by k8s CA suitable for use with sidecar-injector webhook
 services. This requires permissions to create and approve CSR. See
 https://kubernetes.io/docs/tasks/tls/managing-tls-in-a-cluster for
-detailed explantion and additional instructions.
+detailed explanation and additional instructions.
 
 The server key/cert k8s CA cert are stored in a k8s secret.
 
@@ -46,9 +46,9 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-[ -z ${service} ] && service=sidecar-injector-webhook-svc
-[ -z ${secret} ] && secret=sidecar-injector-webhook-certs
-[ -z ${namespace} ] && namespace=default
+[ -z "${service}" ] && service=sidecar-injector-webhook-svc
+[ -z "${secret}" ] && secret=sidecar-injector-webhook-certs
+[ -z "${namespace}" ] && namespace=default
 
 if [ ! -x "$(command -v openssl)" ]; then
     echo "openssl not found"
@@ -59,7 +59,7 @@ csrName=${service}.${namespace}
 tmpdir=$(mktemp -d)
 echo "creating certs in tmpdir ${tmpdir} "
 
-cat <<EOF >> ${tmpdir}/csr.conf
+cat <<EOF >> "${tmpdir}"/csr.conf
 [req]
 req_extensions = v3_req
 distinguished_name = req_distinguished_name
@@ -75,8 +75,8 @@ DNS.2 = ${service}.${namespace}
 DNS.3 = ${service}.${namespace}.svc
 EOF
 
-openssl genrsa -out ${tmpdir}/server-key.pem 2048
-openssl req -new -key ${tmpdir}/server-key.pem -subj "/CN=${service}.${namespace}.svc" -out ${tmpdir}/server.csr -config ${tmpdir}/csr.conf
+openssl genrsa -out "${tmpdir}"/server-key.pem 2048
+openssl req -new -key "${tmpdir}"/server-key.pem -subj "/CN=${service}.${namespace}.svc" -out "${tmpdir}"/server.csr -config "${tmpdir}"/csr.conf
 
 # clean-up any previously created CSR for our service. Ignore errors if not present.
 kubectl delete csr ${csrName} 2>/dev/null || true
@@ -90,7 +90,7 @@ metadata:
 spec:
   groups:
   - system:authenticated
-  request: $(cat ${tmpdir}/server.csr | base64 | tr -d '\n')
+  request: $(< "${tmpdir}"/server.csr base64 | tr -d '\n')
   usages:
   - digital signature
   - key encipherment
@@ -99,8 +99,7 @@ EOF
 
 # verify CSR has been created
 while true; do
-    kubectl get csr ${csrName}
-    if [ "$?" -eq 0 ]; then
+    if ! kubectl get csr ${csrName}; then
         break
     fi
 done
@@ -108,7 +107,7 @@ done
 # approve and fetch the signed certificate
 kubectl certificate approve ${csrName}
 # verify certificate has been signed
-for x in $(seq 10); do
+for _ in $(seq 10); do
     serverCert=$(kubectl get csr ${csrName} -o jsonpath='{.status.certificate}')
     if [[ ${serverCert} != '' ]]; then
         break
@@ -119,12 +118,12 @@ if [[ ${serverCert} == '' ]]; then
     echo "ERROR: After approving csr ${csrName}, the signed certificate did not appear on the resource. Giving up after 10 attempts." >&2
     exit 1
 fi
-echo ${serverCert} | openssl base64 -d -A -out ${tmpdir}/server-cert.pem
+echo "${serverCert}" | openssl base64 -d -A -out "${tmpdir}"/server-cert.pem
 
 
 # create the secret with CA cert and server cert/key
 kubectl create secret generic ${secret} \
-        --from-file=key.pem=${tmpdir}/server-key.pem \
-        --from-file=cert.pem=${tmpdir}/server-cert.pem \
+        --from-file=key.pem="${tmpdir}"/server-key.pem \
+        --from-file=cert.pem="${tmpdir}"/server-cert.pem \
         --dry-run -o yaml |
     kubectl -n ${namespace} apply -f -
