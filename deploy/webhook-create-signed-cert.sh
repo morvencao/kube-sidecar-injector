@@ -99,8 +99,10 @@ EOF
 
 # verify CSR has been created
 while true; do
-    if ! kubectl get csr ${csrName}; then
+    if kubectl get csr ${csrName}; then
         break
+    else
+        sleep 1
     fi
 done
 
