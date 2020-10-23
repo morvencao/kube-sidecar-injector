@@ -69,13 +69,17 @@ build:
 	@echo "Building the $(IMAGE_NAME) binary..."
 	@CGO_ENABLED=0 go build -o build/_output/bin/$(IMAGE_NAME) ./cmd/
 
+build-linux:
+	@echo "Building the $(IMAGE_NAME) binary for Docker (linux)..."
+	@GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/_output/linux/bin/$(IMAGE_NAME) ./cmd/
+
 ############################################################
 # image section
 ############################################################
 
 image: build-image push-image
 
-build-image: build
+build-image: build-linux
 	@echo "Building the docker image: $(IMAGE_REPO)/$(IMAGE_NAME):$(IMAGE_TAG)..."
 	@docker build -t $(IMAGE_REPO)/$(IMAGE_NAME):$(IMAGE_TAG) -f build/Dockerfile .
 
@@ -92,4 +96,3 @@ clean:
 	@rm -rf build/_output
 
 .PHONY: all fmt lint check test build image clean
-
