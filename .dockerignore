@@ -12,7 +12,5 @@
 
 vendor/*
 
-build/_output
-
 # GOPATH
-.go
+.go/*
