@@ -255,13 +255,13 @@ data:
         configMap:
           name: nginx-configmap
 ```
-From the above manifest, another ConfigMap including `nginx conf` is required. Here we put it in [nginxconfigmap.yaml](https://github.com/morvencao/kube-mutating-webhook-tutorial/blob/master/deployment/nginxconfigmap.yaml).
+From the above manifest, another ConfigMap including `nginx conf` is required. Here we put it in [nginxconfigmap.yaml](https://github.com/morvencao/kube-mutating-webhook-tutorial/blob/master/deploy/nginxconfigmap.yaml).
 
 Then deploy the two `ConfigMap`s to cluster:
 ```
-[root@mstnode kube-mutating-webhook-tutorial]# kubectl create -f ./deployment/nginxconfigmap.yaml
+[root@mstnode kube-mutating-webhook-tutorial]# kubectl create -f ./deploy/nginxconfigmap.yaml
 configmap "nginx-configmap" created
-[root@mstnode kube-mutating-webhook-tutorial]# kubectl create -f ./deployment/configmap.yaml
+[root@mstnode kube-mutating-webhook-tutorial]# kubectl create -f ./deploy/configmap.yaml
 configmap "sidecar-injector-webhook-configmap" created
 ```
 
@@ -371,7 +371,7 @@ kubectl create secret generic ${secret} \
 
 Then execute it and a Kubernetes `secret` including cert/key pair is created:
 ```
-[root@mstnode kube-mutating-webhook-tutorial]# ./deployment/webhook-create-signed-cert.sh
+[root@mstnode kube-mutating-webhook-tutorial]# ./deploy/webhook-create-signed-cert.sh
 creating certs in tmpdir /tmp/tmp.wXZywp0wAF
 Generating RSA private key, 2048 bit long modulus
 ...........................................+++
@@ -448,9 +448,9 @@ spec:
 
 Next we deploy the above `Deployment` and `Service` to cluster and verify the `sidecar injector` webhook server is running:
 ```
-[root@mstnode kube-mutating-webhook-tutorial]# kubectl create -f ./deployment/deployment.yaml
+[root@mstnode kube-mutating-webhook-tutorial]# kubectl create -f ./deploy/deployment.yaml
 deployment "sidecar-injector-webhook-deployment" created
-[root@mstnode kube-mutating-webhook-tutorial]# kubectl create -f ./deployment/service.yaml
+[root@mstnode kube-mutating-webhook-tutorial]# kubectl create -f ./deploy/service.yaml
 service "sidecar-injector-webhook-svc" created
 [root@mstnode kube-mutating-webhook-tutorial]# kubectl get deployment
 NAME                                  DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
@@ -515,14 +515,14 @@ fi
 
 Then execute:
 ```
-[root@mstnode kube-mutating-webhook-tutorial]# cat ./deployment/mutatingwebhook.yaml |\
->   ./deployment/webhook-patch-ca-bundle.sh >\
->   ./deployment/mutatingwebhook-ca-bundle.yaml
+[root@mstnode kube-mutating-webhook-tutorial]# cat ./deploy/mutatingwebhook.yaml |\
+>   ./deploy/webhook-patch-ca-bundle.sh >\
+>   ./deploy/mutatingwebhook-ca-bundle.yaml
 ```
 
 Finally we can deploy `MutatingWebhookConfiguration`:
 ```
-[root@mstnode kube-mutating-webhook-tutorial]# kubectl create -f ./deployment/mutatingwebhook-ca-bundle.yaml
+[root@mstnode kube-mutating-webhook-tutorial]# kubectl create -f ./deploy/mutatingwebhook-ca-bundle.yaml
 mutatingwebhookconfiguration "sidecar-injector-webhook-cfg" created
 [root@mstnode kube-mutating-webhook-tutorial]# kubectl get mutatingwebhookconfiguration
 NAME                           AGE
