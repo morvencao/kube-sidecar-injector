@@ -101,6 +101,8 @@ EOF
 while true; do
     if kubectl get csr ${csrName}; then
         break
+    else
+        sleep 1
     fi
 done
 
