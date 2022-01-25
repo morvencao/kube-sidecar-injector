@@ -4,6 +4,7 @@
 IMAGE_REPO ?= docker.io/morvencao
 IMAGE_NAME ?= sidecar-injector
 
+
 # Github host to use for checking the source tree;
 # Override this variable ue with your own value if you're working on forked repo.
 GIT_HOST ?= github.com/morvencao
@@ -20,7 +21,9 @@ DEST := $(GOPATH)/src/$(GIT_HOST)/$(BASE_DIR)
 IMAGE_TAG ?= $(shell date +v%Y%m%d)-$(shell git describe --match=$(git rev-parse --short=8 HEAD) --tags --always --dirty)
 
 
+GOARCH := $(shell uname -m) 
 LOCAL_OS := $(shell uname)
+
 ifeq ($(LOCAL_OS),Linux)
     TARGET_OS ?= linux
     XARGS_FLAGS="-r"
@@ -66,12 +69,12 @@ test:
 ############################################################
 
 build:
-	@echo "Building the $(IMAGE_NAME) binary..."
+	@echo "Building the $(IMAGE_NAME) binary for $(GOARCH)..."
 	@CGO_ENABLED=0 go build -o build/_output/bin/$(IMAGE_NAME) ./cmd/
 
 build-linux:
-	@echo "Building the $(IMAGE_NAME) binary for Docker (linux)..."
-	@GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/_output/linux/bin/$(IMAGE_NAME) ./cmd/
+	@echo "Building the $(IMAGE_NAME) binary for Docker (linux) $(GOARCH)..."
+	@GOOS=linux GOARCH=$(GOARCH) CGO_ENABLED=0 go build -o build/_output/linux/bin/$(IMAGE_NAME) ./cmd/
 
 ############################################################
 # image section
