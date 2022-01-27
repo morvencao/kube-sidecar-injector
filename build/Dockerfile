@@ -1,4 +1,4 @@
-FROM alpine:latest
+FROM arm64v8/alpine:latest
 
 # set labels for metadata
 LABEL maintainer="Morven Cao<morvencao@gmail.com>" \
