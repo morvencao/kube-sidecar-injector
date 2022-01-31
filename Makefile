@@ -1,12 +1,13 @@
 # Image URL to use all building/pushing image targets;
 # Use your own docker registry and image name for dev/test by overridding the
 # IMAGE_REPO, IMAGE_NAME and IMAGE_TAG environment variable.
-IMAGE_REPO ?= docker.io/morvencao
+IMAGE_REPO ?= 584416962002.dkr.ecr.us-west-2.amazonaws.com/nginx
 IMAGE_NAME ?= sidecar-injector
+
 
 # Github host to use for checking the source tree;
 # Override this variable ue with your own value if you're working on forked repo.
-GIT_HOST ?= github.com/morvencao
+GIT_HOST ?= github.com/yahavb
 
 PWD := $(shell pwd)
 BASE_DIR := $(shell basename $(PWD))
@@ -20,7 +21,17 @@ DEST := $(GOPATH)/src/$(GIT_HOST)/$(BASE_DIR)
 IMAGE_TAG ?= $(shell date +v%Y%m%d)-$(shell git describe --match=$(git rev-parse --short=8 HEAD) --tags --always --dirty)
 
 
+ARCH := $(shell uname -m)
+ifeq ($(ARCH),x86_64)
+    GOARCH ?= amd64
+else ifeq ($(ARCH),aarch64)
+    GOARCH ?= arm64
+else
+    $(error "This system's arch $(ARCH) isn't recognized/supported")
+endif
+
 LOCAL_OS := $(shell uname)
+
 ifeq ($(LOCAL_OS),Linux)
     TARGET_OS ?= linux
     XARGS_FLAGS="-r"
@@ -66,12 +77,12 @@ test:
 ############################################################
 
 build:
-	@echo "Building the $(IMAGE_NAME) binary..."
+	@echo "Building the $(IMAGE_NAME) binary for $(GOARCH)..."
 	@CGO_ENABLED=0 go build -o build/_output/bin/$(IMAGE_NAME) ./cmd/
 
 build-linux:
-	@echo "Building the $(IMAGE_NAME) binary for Docker (linux)..."
-	@GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/_output/linux/bin/$(IMAGE_NAME) ./cmd/
+	@echo "Building the $(IMAGE_NAME) binary for Docker (linux) $(GOARCH)..."
+	@GOOS=linux GOARCH=$(GOARCH) CGO_ENABLED=0 go build -o build/_output/linux/bin/$(IMAGE_NAME) ./cmd/
 
 ############################################################
 # image section

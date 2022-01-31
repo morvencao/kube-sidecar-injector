@@ -1,7 +1,7 @@
-FROM alpine:latest
+FROM arm64v8/alpine:latest
 
 # set labels for metadata
-LABEL maintainer="Morven Cao<morvencao@gmail.com>" \
+LABEL maintainer="Yahav Biran<birayaha@amazon.com>" \
   name="sidecar-injector" \
   description="A Kubernetes mutating webhook server that implements sidecar injection" \
   summary="A Kubernetes mutating webhook server that implements sidecar injection"
