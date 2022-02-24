@@ -14,29 +14,58 @@ import (
 )
 
 func main() {
-	var parameters WhSvrParameters
-
+	var port int
+	var webhookNamespace, webhookServiceName, sidecarCfgFile string
 	// get command line parameters
-	flag.IntVar(&parameters.port, "port", 8443, "Webhook server port.")
-	flag.StringVar(&parameters.certFile, "tlsCertFile", "/etc/webhook/certs/cert.pem", "File containing the x509 Certificate for HTTPS.")
-	flag.StringVar(&parameters.keyFile, "tlsKeyFile", "/etc/webhook/certs/key.pem", "File containing the x509 private key to --tlsCertFile.")
-	flag.StringVar(&parameters.sidecarCfgFile, "sidecarCfgFile", "/etc/webhook/config/sidecarconfig.yaml", "File containing the mutation configuration.")
+	flag.IntVar(&port, "port", 8443, "Webhook server port.")
+	flag.StringVar(&webhookServiceName, "service-name", "sidecar-injector-webhook", "Webhook service name.")
+	// flag.StringVar(&parameters.certFile, "tlsCertFile", "/etc/webhook/certs/cert.pem", "File containing the x509 Certificate for HTTPS.")
+	// flag.StringVar(&parameters.keyFile, "tlsKeyFile", "/etc/webhook/certs/key.pem", "File containing the x509 private key to --tlsCertFile.")
+	flag.StringVar(&sidecarCfgFile, "sidecarCfgFile", "/etc/webhook/config/sidecarconfig.yaml", "File containing the mutation configuration.")
 	flag.Parse()
 
-	sidecarConfig, err := loadConfig(parameters.sidecarCfgFile)
+	webhookNamespace = os.Getenv("POD_NAMESPACE")
+	sidecarConfig, err := loadConfig(sidecarCfgFile)
 	if err != nil {
 		glog.Errorf("Failed to load configuration: %v", err)
+		os.Exit(1)
 	}
 
-	pair, err := tls.LoadX509KeyPair(parameters.certFile, parameters.keyFile)
+	dnsNames := []string{
+		webhookServiceName,
+		webhookServiceName + "." + webhookNamespace,
+		webhookServiceName + "." + webhookNamespace + ".svc",
+	}
+	commonName := webhookServiceName + "." + webhookNamespace + ".svc"
+
+	ca, caKey, caPEM, err := generateCA([]string{"morven.me"})
+	if err != nil {
+		glog.Errorf("Failed to generate CA: %v", err)
+		os.Exit(1)
+	}
+
+	certPEM, keyPEM, err := signCertificate(ca, caKey, dnsNames, commonName)
+	if err != nil {
+		glog.Errorf("Failed to sign certificate & key pair: %v", err)
+		os.Exit(1)
+	}
+
+	pair, err := tls.X509KeyPair(certPEM.Bytes(), keyPEM.Bytes())
 	if err != nil {
 		glog.Errorf("Failed to load key pair: %v", err)
+		os.Exit(1)
+	}
+
+	err = createMutatingWebhookConfiguration(caPEM, webhookServiceName, webhookNamespace)
+	if err != nil {
+		glog.Errorf("Failed to create mutating webhook configuration: %v", err)
+		os.Exit(1)
 	}
 
 	whsvr := &WebhookServer{
 		sidecarConfig: sidecarConfig,
 		server: &http.Server{
-			Addr:      fmt.Sprintf(":%v", parameters.port),
+			Addr:      fmt.Sprintf(":%v", port),
 			TLSConfig: &tls.Config{Certificates: []tls.Certificate{pair}},
 		},
 	}
