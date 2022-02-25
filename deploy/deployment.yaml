@@ -1,8 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sidecar-injector-webhook-deployment
-  namespace: sidecar-injector
+  name: sidecar-injector
   labels:
     app: sidecar-injector
 spec:
@@ -15,27 +14,23 @@ spec:
       labels:
         app: sidecar-injector
     spec:
+      serviceAccountName: sidecar-injector
       containers:
         - name: sidecar-injector
-          image: morvencao/sidecar-injector:latest
-          imagePullPolicy: IfNotPresent
+          image: sidecar-injector
+          imagePullPolicy: Always
           args:
-          - -sidecarCfgFile=/etc/webhook/config/sidecarconfig.yaml
-          - -tlsCertFile=/etc/webhook/certs/cert.pem
-          - -tlsKeyFile=/etc/webhook/certs/key.pem
-          - -alsologtostderr
-          - -v=4
-          - 2>&1
+          - -service-name=sidecar-injector
+          - -sidecar-config-file=/etc/webhook/config/sidecarconfig.yaml
+          env:
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
           volumeMounts:
-          - name: webhook-certs
-            mountPath: /etc/webhook/certs
-            readOnly: true
           - name: webhook-config
             mountPath: /etc/webhook/config
       volumes:
-      - name: webhook-certs
-        secret:
-          secretName: sidecar-injector-webhook-certs
       - name: webhook-config
         configMap:
-          name: sidecar-injector-webhook-configmap
+          name: sidecar-injector

@@ -15,7 +15,7 @@ import (
 
 var (
 	webhookConfigName = "sidecar-injector-webhook"
-	webhookInjectPath = "inject"
+	webhookInjectPath = "/inject"
 )
 
 func createOrUpdateMutatingWebhookConfiguration(caPEM *bytes.Buffer, webhookService, webhookNamespace string) error {
