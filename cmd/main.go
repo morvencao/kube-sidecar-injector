@@ -5,13 +5,25 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-
-	"github.com/golang/glog"
 )
+
+var (
+	infoLogger    *log.Logger
+	warningLogger *log.Logger
+	errorLogger   *log.Logger
+)
+
+func init() {
+	// init loggers
+	infoLogger = log.New(os.Stderr, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+	warningLogger = log.New(os.Stderr, "WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
+	errorLogger = log.New(os.Stderr, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+}
 
 func main() {
 	var parameters WhSvrParameters
@@ -25,12 +37,12 @@ func main() {
 
 	sidecarConfig, err := loadConfig(parameters.sidecarCfgFile)
 	if err != nil {
-		glog.Errorf("Failed to load configuration: %v", err)
+		errorLogger.Fatalf("Failed to load configuration: %v", err)
 	}
 
 	pair, err := tls.LoadX509KeyPair(parameters.certFile, parameters.keyFile)
 	if err != nil {
-		glog.Errorf("Failed to load key pair: %v", err)
+		errorLogger.Fatalf("Failed to load key pair: %v", err)
 	}
 
 	whsvr := &WebhookServer{
@@ -49,7 +61,7 @@ func main() {
 	// start webhook server in new rountine
 	go func() {
 		if err := whsvr.server.ListenAndServeTLS("", ""); err != nil {
-			glog.Errorf("Failed to listen and serve webhook server: %v", err)
+			errorLogger.Fatalf("Failed to listen and serve webhook server: %v", err)
 		}
 	}()
 
@@ -58,6 +70,6 @@ func main() {
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 	<-signalChan
 
-	glog.Infof("Got OS shutdown signal, shutting down webhook server gracefully...")
+	infoLogger.Printf("Got OS shutdown signal, shutting down webhook server gracefully...")
 	whsvr.server.Shutdown(context.Background())
 }
