@@ -1,16 +1,15 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: sidecar-injector-webhook-configmap
-  namespace: sidecar-injector
+  name: sidecar-injector
+  labels:
+    app: sidecar-injector
 data:
   sidecarconfig.yaml: |
     containers:
     - name: sidecar-nginx
       image: nginx:1.12.2
       imagePullPolicy: IfNotPresent
-      ports:
-      - containerPort: 80
       volumeMounts:
       - name: nginx-conf
         mountPath: /etc/nginx
