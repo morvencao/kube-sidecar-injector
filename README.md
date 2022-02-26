@@ -85,4 +85,4 @@ Sometimes you may find that pod is injected with sidecar container as expected, 
 
 1. The sidecar-injector pod is in running state and no error logs.
 2. The namespace in which application pod is deployed has the correct labels(`sidecar-injector=enabled`) as configured in `mutatingwebhookconfiguration`.
-3. Check if the application pod has annotation `sidecar-injector-webhook.morven.me/inject":"yes"`.
+3. Check if the application pod has annotation `sidecar-injector-webhook.morven.me/inject:"yes"`.
