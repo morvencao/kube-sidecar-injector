@@ -15,9 +15,20 @@ COPY cmd/ cmd/
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o sidecar-injector ./cmd
 
+
 FROM alpine:latest
+
+# install curl for prestop script
+RUN apk --no-cache add curl
+
 WORKDIR /
+
+# install binary
 COPY --from=builder /workspace/sidecar-injector .
+
+# install the prestop script
+COPY ./prestop.sh .
+
 USER 65532:65532
 
 ENTRYPOINT ["/sidecar-injector"]
