@@ -95,9 +95,9 @@ func mutationRequired(ignoredList []string, metadata *metav1.ObjectMeta) bool {
 	} else {
 		switch strings.ToLower(annotations[admissionWebhookAnnotationInjectKey]) {
 		default:
-			required = false
-		case "y", "yes", "true", "on":
 			required = true
+		case "n", "not", "false", "off":
+			required = false
 		}
 	}
 

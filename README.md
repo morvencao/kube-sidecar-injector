@@ -66,7 +66,6 @@ sidecar-injector     Active   17m
 kubectl -n test-ns run alpine \
     --image=alpine \
     --restart=Never \
-    --overrides='{"apiVersion":"v1","metadata":{"annotations":{"sidecar-injector-webhook.morven.me/inject":"yes"}}}' \
     --command -- sleep infinity
 ```
 
