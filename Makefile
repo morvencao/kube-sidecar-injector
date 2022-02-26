@@ -1,98 +1,100 @@
-# Image URL to use all building/pushing image targets;
-# Use your own docker registry and image name for dev/test by overridding the
-# IMAGE_REPO, IMAGE_NAME and IMAGE_TAG environment variable.
-IMAGE_REPO ?= docker.io/morvencao
-IMAGE_NAME ?= sidecar-injector
+# Setting SHELL to bash allows bash commands to be executed by recipes.
+# This is a requirement for 'setup-envtest.sh' in the test target.
+# Options are set to exit when a recipe line exits non-zero or a piped command fails.
+SHELL = /usr/bin/env bash -o pipefail
+.SHELLFLAGS = -ec
 
-# Github host to use for checking the source tree;
-# Override this variable ue with your own value if you're working on forked repo.
-GIT_HOST ?= github.com/morvencao
-
-PWD := $(shell pwd)
-BASE_DIR := $(shell basename $(PWD))
-
-# Keep an existing GOPATH, make a private one if it is undefined
-GOPATH_DEFAULT := $(PWD)/.go
-export GOPATH ?= $(GOPATH_DEFAULT)
-TESTARGS_DEFAULT := "-v"
-export TESTARGS ?= $(TESTARGS_DEFAULT)
-DEST := $(GOPATH)/src/$(GIT_HOST)/$(BASE_DIR)
-IMAGE_TAG ?= $(shell date +v%Y%m%d)-$(shell git describe --match=$(git rev-parse --short=8 HEAD) --tags --always --dirty)
-
-
-LOCAL_OS := $(shell uname)
-ifeq ($(LOCAL_OS),Linux)
-    TARGET_OS ?= linux
-    XARGS_FLAGS="-r"
-else ifeq ($(LOCAL_OS),Darwin)
-    TARGET_OS ?= darwin
-    XARGS_FLAGS=
+# Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
+ifeq (,$(shell go env GOBIN))
+GOBIN=$(shell go env GOPATH)/bin
 else
-    $(error "This system's OS $(LOCAL_OS) isn't recognized/supported")
+GOBIN=$(shell go env GOBIN)
 endif
 
-all: fmt lint test build image
+# Tools for deploy
+KUBECTL?=kubectl
+PWD=$(shell pwd)
+KUSTOMIZE?=$(PWD)/$(PERMANENT_TMP_GOPATH)/bin/kustomize
+KUSTOMIZE_VERSION?=v3.5.4
+KUSTOMIZE_ARCHIVE_NAME?=kustomize_$(KUSTOMIZE_VERSION)_$(GOHOSTOS)_$(GOHOSTARCH).tar.gz
+kustomize_dir:=$(dir $(KUSTOMIZE))
 
-ifeq (,$(wildcard go.mod))
-ifneq ("$(realpath $(DEST))", "$(realpath $(PWD))")
-    $(error Please run 'make' from $(DEST). Current directory is $(PWD))
-endif
-endif
+IMAGE = quay.io/morvencao/sidecar-injector:latest
 
-############################################################
-# format section
-############################################################
+all: build
+.PHONY: all
 
-fmt:
-	@echo "Run go fmt..."
+##@ General
 
-############################################################
-# lint section
-############################################################
+# The help target prints out all targets with their descriptions organized
+# beneath their categories. The categories are represented by '##@' and the
+# target descriptions by '##'. The awk commands is responsible for reading the
+# entire set of makefiles included in this invocation, looking for lines of the
+# file as xyz: ## something, and then pretty-format the target and help. Then,
+# if there's a line with ##@ something, that gets pretty-printed as a category.
+# More info on the usage of ANSI control characters for terminal formatting:
+# https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_parameters
+# More info on the awk command:
+# http://linuxcommand.org/lc3_adv_awk.php
 
-lint:
-	@echo "Runing the golangci-lint..."
+.PHONY: help
+help: ## Display this help.
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-############################################################
-# test section
-############################################################
+##@ Development
 
-test:
-	@echo "Running the tests for $(IMAGE_NAME)..."
-	@go test $(TESTARGS) ./...
+.PHONY: fmt
+fmt: ## Run go fmt against code.
+	go fmt ./...
 
-############################################################
-# build section
-############################################################
+.PHONY: vet
+vet: ## Run go vet against code.
+	go vet ./...
 
-build:
-	@echo "Building the $(IMAGE_NAME) binary..."
-	@CGO_ENABLED=0 go build -o build/_output/bin/$(IMAGE_NAME) ./cmd/
+.PHONY: test
+test: fmt vet ## Run tests.
+	go test ./... -coverprofile cover.out
 
-build-linux:
-	@echo "Building the $(IMAGE_NAME) binary for Docker (linux)..."
-	@GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/_output/linux/bin/$(IMAGE_NAME) ./cmd/
+##@ Build
 
-############################################################
-# image section
-############################################################
+.PHONY: build
+build: fmt vet ## Build binary.
+	go build -o bin/sidecar-injector ./cmd/
 
-image: build-image push-image
+.PHONY: docker-build
+docker-build: test ## Build docker image.
+	docker build -t ${IMAGE} .
 
-build-image: build-linux
-	@echo "Building the docker image: $(IMAGE_REPO)/$(IMAGE_NAME):$(IMAGE_TAG)..."
-	@docker build -t $(IMAGE_REPO)/$(IMAGE_NAME):$(IMAGE_TAG) -f build/Dockerfile .
+.PHONY: docker-push
+docker-push: ## Push docker image.
+	docker push ${IMAGE}
 
-push-image: build-image
-	@echo "Pushing the docker image for $(IMAGE_REPO)/$(IMAGE_NAME):$(IMAGE_TAG) and $(IMAGE_REPO)/$(IMAGE_NAME):latest..."
-	@docker tag $(IMAGE_REPO)/$(IMAGE_NAME):$(IMAGE_TAG) $(IMAGE_REPO)/$(IMAGE_NAME):latest
-	@docker push $(IMAGE_REPO)/$(IMAGE_NAME):$(IMAGE_TAG)
-	@docker push $(IMAGE_REPO)/$(IMAGE_NAME):latest
+##@ Deployment
 
-############################################################
-# clean section
-############################################################
-clean:
-	@rm -rf build/_output
+deploy: kustomize
+	cp deploy/kustomization.yaml deploy/kustomization.yaml.tmp
+	cd deploy && $(KUSTOMIZE) edit set image sidecar-injector=$(IMAGE)
+	$(KUSTOMIZE) build deploy | $(KUBECTL) apply -f -
+	mv deploy/kustomization.yaml.tmp deploy/kustomization.yaml
 
-.PHONY: all fmt lint check test build image clean
+undeploy: kustomize
+	$(KUSTOMIZE) build deploy | $(KUBECTL) delete --ignore-not-found -f -
+
+KUSTOMIZE = $(shell pwd)/bin/kustomize
+.PHONY: kustomize
+kustomize: ## Download kustomize locally if necessary.
+	$(call go-get-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v3@v3.8.7)
+
+# go-get-tool will 'go get' any package $2 and install it to $1.
+PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
+define go-get-tool
+@[ -f $(1) ] || { \
+set -e ;\
+TMP_DIR=$$(mktemp -d) ;\
+cd $$TMP_DIR ;\
+go mod init tmp ;\
+echo "Downloading $(2)" ;\
+GOBIN=$(PROJECT_DIR)/bin go get $(2) ;\
+rm -rf $$TMP_DIR ;\
+}
+endef
