@@ -19,7 +19,7 @@ KUSTOMIZE_VERSION?=v3.5.4
 KUSTOMIZE_ARCHIVE_NAME?=kustomize_$(KUSTOMIZE_VERSION)_$(GOHOSTOS)_$(GOHOSTARCH).tar.gz
 kustomize_dir:=$(dir $(KUSTOMIZE))
 
-IMAGE = quay.io/morvencao/sidecar-injector:latest
+IMAGE = quay.io/dmitriev/sidecar-injector:latest
 
 all: build
 .PHONY: all
@@ -63,7 +63,7 @@ build: fmt vet ## Build binary.
 
 .PHONY: docker-build
 docker-build: test ## Build docker image.
-	docker build -t ${IMAGE} .
+	docker build -t ${IMAGE} . --no-cache
 
 .PHONY: docker-push
 docker-push: ## Push docker image.

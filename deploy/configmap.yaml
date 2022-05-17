@@ -5,15 +5,93 @@ metadata:
   labels:
     app: sidecar-injector
 data:
-  sidecarconfig.yaml: |
-    containers:
-    - name: sidecar-nginx
-      image: nginx:1.12.2
+  sidecar-template.yaml.tmpl: |
+    initContainers:
+    - name: sidecar-init
+      image: {{ .Values.Init.Image }}:{{ .Values.Init.Tag }}
       imagePullPolicy: IfNotPresent
+      env:
+      - name: TARANTOOL_HOST
+        value: {{ .Values.Global.TarantoolHost }}
+      resources:
+        requests:
+          cpu: {{ .Values.Init.Resources.Requests.Cpu }}
+          memory: {{ .Values.Init.Resources.Requests.Memory }}
+        limits:
+          cpu: {{ .Values.Init.Resources.Limits.Cpu }}
+          memory: {{ .Values.Init.Resources.Limits.Memory }}
       volumeMounts:
       - name: nginx-conf
-        mountPath: /etc/nginx
+        mountPath: /etc/nginx/conf.d
+      - name: podinfo
+        mountPath: /etc/podinfo
+    containers:
+    - name: sidecar-proxy
+      image: {{ .Values.Proxy.Image }}:{{ .Values.Proxy.Tag }}
+      imagePullPolicy: IfNotPresent
+      env:
+      - name: WALLARM_API_HOST
+        value: {{ .Values.Global.ApiHost }}
+      - name: WALLARM_API_KEY
+        value: {{ .Secrets.ApiKey }}
+      ports:
+        - containerPort: {{ getAnnotation .ObjectMeta `sidecar.wallarm.io/wallarm-proxy-port` .Values.Proxy.Port }}
+      resources:
+        requests:
+          cpu: {{ getAnnotation .ObjectMeta `sidecar.wallarm.io/proxy-cpu` .Values.Proxy.Resources.Requests.Cpu }}
+          memory: {{ getAnnotation .ObjectMeta `sidecar.wallarm.io/proxy-memory` .Values.Proxy.Resources.Requests.Memory }}
+        limits:
+          cpu: {{ getAnnotation .ObjectMeta `sidecar.wallarm.io/proxy-cpu-limit` .Values.Proxy.Resources.Limits.Cpu }}
+          memory: {{ getAnnotation .ObjectMeta `sidecar.wallarm.io/proxy-memory-limit` .Values.Proxy.Resources.Limits.Memory }}
+      volumeMounts:
+      - name: nginx-conf
+        mountPath: /etc/nginx/sites-enabled
     volumes:
+    - name: podinfo
+      downwardAPI:
+          items:
+            - path: "annotations"
+              fieldRef:
+                fieldPath: metadata.annotations
     - name: nginx-conf
-      configMap:
-        name: nginx-configmap
+      emptyDir: {}
+
+  sidecar-values.json: |
+    {
+      "global": {
+        "image": "nginx",
+        "tag": "1.12.2",
+        "apiHost": "api.wallarm.com",
+        "apiPort": "443",
+        "tarantoolHost": "tarantool.wallarm.svc"
+      },
+      "proxy": {
+        "image": "nginx",
+        "tag": "1.12.2",
+        "port": "8080",
+        "resources": {
+          "requests": {
+            "cpu": "100m",
+            "memory": "128Mi"
+          },
+          "limits": {
+            "cpu": "1000m",
+            "memory": "512Mi"
+          }
+        }
+      },
+      "init": {
+        "image": "nginx",
+        "tag": "1.12.2",
+        "resources": {
+          "limits": {
+            "cpu": "100m",
+            "memory": "128Mi"
+          },
+          "requests": {
+            "cpu": "50m",
+            "memory": "64Mi"
+          }
+        }
+      }
+    }

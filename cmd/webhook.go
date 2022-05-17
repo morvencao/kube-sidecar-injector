@@ -1,14 +1,13 @@
 package main
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"text/template"
 
-	"gopkg.in/yaml.v2"
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,13 +27,14 @@ var ignoredNamespaces = []string{
 }
 
 const (
-	admissionWebhookAnnotationInjectKey = "sidecar-injector-webhook.morven.me/inject"
-	admissionWebhookAnnotationStatusKey = "sidecar-injector-webhook.morven.me/status"
+	admissionWebhookAnnotationStatusKey = "sidecar.wallarm.io/status"
 )
 
 type WebhookServer struct {
-	sidecarConfig *Config
-	server        *http.Server
+	sidecarTemplate *template.Template
+	sidecarDefaults *TemplateDefaultValues
+	sidecarSecrets  SidecarSecrets
+	server          *http.Server
 }
 
 // Webhook Server parameters
@@ -54,21 +54,6 @@ type patchOperation struct {
 	Op    string      `json:"op"`
 	Path  string      `json:"path"`
 	Value interface{} `json:"value,omitempty"`
-}
-
-func loadConfig(configFile string) (*Config, error) {
-	data, err := ioutil.ReadFile(configFile)
-	if err != nil {
-		return nil, err
-	}
-	infoLogger.Printf("New configuration: sha256sum %x", sha256.Sum256(data))
-
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, err
-	}
-
-	return &cfg, nil
 }
 
 // Check whether the target resoured need to be mutated
@@ -93,12 +78,7 @@ func mutationRequired(ignoredList []string, metadata *metav1.ObjectMeta) bool {
 	if strings.ToLower(status) == "injected" {
 		required = false
 	} else {
-		switch strings.ToLower(annotations[admissionWebhookAnnotationInjectKey]) {
-		default:
-			required = true
-		case "n", "not", "false", "off":
-			required = false
-		}
+		required = true
 	}
 
 	infoLogger.Printf("Mutation policy for %v/%v: status: %q required:%v", metadata.Namespace, metadata.Name, status, required)
@@ -148,8 +128,9 @@ func addVolume(target, added []corev1.Volume, basePath string) (patch []patchOpe
 }
 
 func updateAnnotation(target map[string]string, added map[string]string) (patch []patchOperation) {
+	var operation string
 	for key, value := range added {
-		if target == nil || target[key] == "" {
+		if target == nil {
 			target = map[string]string{}
 			patch = append(patch, patchOperation{
 				Op:   "add",
@@ -159,8 +140,14 @@ func updateAnnotation(target map[string]string, added map[string]string) (patch 
 				},
 			})
 		} else {
+			operation = "add"
+			if target[key] != "" {
+				operation = "replace"
+			}
+			// Respect RFC 6901 https://www.rfc-editor.org/rfc/rfc6901#section-3
+			key = strings.ReplaceAll(key, "/", "~1")
 			patch = append(patch, patchOperation{
-				Op:    "replace",
+				Op:    operation,
 				Path:  "/metadata/annotations/" + key,
 				Value: value,
 			})
@@ -170,9 +157,10 @@ func updateAnnotation(target map[string]string, added map[string]string) (patch 
 }
 
 // create mutation patch for resoures
-func createPatch(pod *corev1.Pod, sidecarConfig *Config, annotations map[string]string) ([]byte, error) {
+func createPatch(pod *corev1.Pod, sidecarConfig *SidecarConfig, annotations map[string]string) ([]byte, error) {
 	var patch []patchOperation
 
+	patch = append(patch, addContainer(pod.Spec.InitContainers, sidecarConfig.InitContainers, "/spec/initContainers")...)
 	patch = append(patch, addContainer(pod.Spec.Containers, sidecarConfig.Containers, "/spec/containers")...)
 	patch = append(patch, addVolume(pod.Spec.Volumes, sidecarConfig.Volumes, "/spec/volumes")...)
 	patch = append(patch, updateAnnotation(pod.Annotations, annotations)...)
@@ -204,8 +192,16 @@ func (whsvr *WebhookServer) mutate(ar *admissionv1.AdmissionReview) *admissionv1
 		}
 	}
 
+	sidecarConfig, err := renderSidecarTemplate(whsvr.sidecarTemplate, SidecarTemplateValues{
+		Values:     whsvr.sidecarDefaults,
+		ObjectMeta: &pod.ObjectMeta,
+		Secrets:    whsvr.sidecarSecrets})
+	if err != nil {
+		errorLogger.Fatalf("Failed to render sidecar template: %v", err)
+	}
+
 	annotations := map[string]string{admissionWebhookAnnotationStatusKey: "injected"}
-	patchBytes, err := createPatch(&pod, whsvr.sidecarConfig, annotations)
+	patchBytes, err := createPatch(&pod, sidecarConfig, annotations)
 	if err != nil {
 		return &admissionv1.AdmissionResponse{
 			Result: &metav1.Status{

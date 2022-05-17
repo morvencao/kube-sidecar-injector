@@ -17,11 +17,12 @@ spec:
       serviceAccountName: sidecar-injector
       containers:
         - name: sidecar-injector
-          image: sidecar-injector
+          image: quay.io/dmitriev/sidecar-injector
           imagePullPolicy: Always
           args:
           - -service-name=sidecar-injector
-          - -sidecar-config-file=/etc/webhook/config/sidecarconfig.yaml
+          - -sidecar-template-file=/etc/webhook/config/sidecar-template.yaml.tmpl
+          - -sidecar-values-file=/etc/webhook/config/sidecar-values.json
           env:
           - name: POD_NAMESPACE
             valueFrom:

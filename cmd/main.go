@@ -19,9 +19,15 @@ var (
 )
 
 var (
-	port                                 int
-	sidecarConfigFile                    string
-	webhookNamespace, webhookServiceName string
+	port                                   int
+	sidecarConfigFile                      string
+	sidecarTemplateFile, sidecarValuesFile string
+	webhookNamespace, webhookServiceName   string
+)
+
+const (
+	apiKeyEnvName string = "WALLARM_API_KEY"
+	apiKeyDefault string = "dummyApiKey"
 )
 
 func init() {
@@ -38,7 +44,8 @@ func main() {
 	// init command flags
 	flag.IntVar(&port, "port", 8443, "Webhook server port.")
 	flag.StringVar(&webhookServiceName, "service-name", "sidecar-injector", "Webhook service name.")
-	flag.StringVar(&sidecarConfigFile, "sidecar-config-file", "/etc/webhook/config/sidecarconfig.yaml", "Sidecar injector configuration file.")
+	flag.StringVar(&sidecarTemplateFile, "sidecar-template-file", "/etc/webhook/config/sidecar-template.yaml.tmpl", "Sidecar injector GO template file")
+	flag.StringVar(&sidecarValuesFile, "sidecar-values-file", "/etc/webhook/config/sidecar-values.json", "Sidecar injector values file")
 	// flag.StringVar(&certFile, "tlsCertFile", "/etc/webhook/certs/cert.pem", "x509 Certificate file.")
 	// flag.StringVar(&keyFile, "tlsKeyFile", "/etc/webhook/certs/key.pem", "x509 private key file.")
 	flag.Parse()
@@ -61,10 +68,17 @@ func main() {
 		errorLogger.Fatalf("Failed to load certificate key pair: %v", err)
 	}
 
-	sidecarConfig, err := loadConfig(sidecarConfigFile)
+	sidecarDefaults, err := loadSidecarDefaults(sidecarValuesFile)
 	if err != nil {
-		errorLogger.Fatalf("Failed to load configuration: %v", err)
+		errorLogger.Fatalf("Failed to load sidecar values file: %v", err)
 	}
+
+	sidecarTemplate, err := loadSidecarTemplate(sidecarTemplateFile)
+	if err != nil {
+		errorLogger.Fatalf("Failed to load sidecar template file: %v", err)
+	}
+
+	sidecarSecrets := loadSidecarSecrets()
 
 	// create or update the mutatingwebhookconfiguration
 	err = createOrUpdateMutatingWebhookConfiguration(caPEM, webhookServiceName, webhookNamespace)
@@ -73,7 +87,9 @@ func main() {
 	}
 
 	whsvr := &WebhookServer{
-		sidecarConfig: sidecarConfig,
+		sidecarTemplate: sidecarTemplate,
+		sidecarDefaults: sidecarDefaults,
+		sidecarSecrets:  sidecarSecrets,
 		server: &http.Server{
 			Addr:      fmt.Sprintf(":%v", port),
 			TLSConfig: &tls.Config{Certificates: []tls.Certificate{pair}},
